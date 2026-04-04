@@ -14,15 +14,6 @@ const nd = {
 };
 const mono = "'Space Mono', monospace";
 
-const expenseCategories = [
-  { name: 'Materiales', value: 850 },
-  { name: 'Servicios', value: 3000 },
-  { name: 'Alimentos', value: 1200 },
-  { name: 'Equipamiento', value: 1500 },
-  { name: 'Transporte', value: 2800 },
-  { name: 'Impresion', value: 450 },
-];
-
 const tooltipStyle = {
   background: nd.surfaceRaised, border: `1px solid ${nd.borderVisible}`,
   borderRadius: '8px', fontSize: '12px', fontFamily: mono, color: nd.textPrimary,
