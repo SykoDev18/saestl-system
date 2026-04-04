@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Search, Download, Plus, Eye, Pencil, Trash2, X,
   ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Upload
@@ -35,16 +35,27 @@ export function TransactionsPage() {
   const [formCategory, setFormCategory] = useState('Cuotas');
   const [formDescription, setFormDescription] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formPayment, setFormPayment] = useState('Efectivo');
+  const [formPayment, setFormPayment] = useState<'Efectivo' | 'Transferencia' | 'Tarjeta'>('Efectivo');
   const [formResponsible, setFormResponsible] = useState('Juan Perez');
 
-  const filtered = data.filter(t => {
+  const closeModals = useCallback(() => {
+    setModalOpen(false);
+    setDetailModal(null);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModals(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [closeModals]);
+
+  const filtered = useMemo(() => data.filter(t => {
     if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false;
     if (typeFilter !== 'todos' && t.type !== typeFilter) return false;
     if (catFilter !== 'Todas' && t.category !== catFilter) return false;
     if (statusFilter !== 'todos' && t.status !== statusFilter) return false;
     return true;
-  });
+  }), [data, search, typeFilter, catFilter, statusFilter]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -58,7 +69,7 @@ export function TransactionsPage() {
   const openEdit = (tx: Transaction) => {
     setEditingTx(tx); setFormType(tx.type); setFormAmount(tx.amount.toString());
     setFormCategory(tx.category); setFormDescription(tx.description);
-    setFormDate(tx.date); setFormResponsible(tx.responsible); setModalOpen(true);
+    setFormDate(tx.date); setFormPayment(tx.metodoPago); setFormResponsible(tx.responsible); setModalOpen(true);
   };
 
   const handleSave = () => {
@@ -66,13 +77,13 @@ export function TransactionsPage() {
     if (editingTx) {
       setData(prev => prev.map(t => t.id === editingTx.id ? {
         ...t, type: formType, amount: parseFloat(formAmount), category: formCategory,
-        description: formDescription, date: formDate, responsible: formResponsible,
+        description: formDescription, date: formDate, metodoPago: formPayment, responsible: formResponsible,
       } : t));
       toast.success('[SAVED]');
     } else {
       const newTx: Transaction = {
         id: Date.now().toString(), date: formDate, type: formType, category: formCategory,
-        description: formDescription, responsible: formResponsible, amount: parseFloat(formAmount), status: 'pendiente',
+        description: formDescription, responsible: formResponsible, amount: parseFloat(formAmount), status: 'pendiente', metodoPago: formPayment,
       };
       setData(prev => [newTx, ...prev]);
       toast.success('[CREATED]');
@@ -408,6 +419,7 @@ export function TransactionsPage() {
                 ['DESCRIPCION', detailModal.description],
                 ['CATEGORIA', detailModal.category],
                 ['FECHA', new Date(detailModal.date).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })],
+                ['METODO', detailModal.metodoPago],
                 ['RESPONSABLE', detailModal.responsible],
               ].map(([label, val]) => (
                 <div key={label as string} className="flex justify-between py-3" style={{ borderBottom: `1px solid ${nd.border}` }}>
