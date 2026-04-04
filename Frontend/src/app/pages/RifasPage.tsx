@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Ticket, Plus, X, ShoppingCart, Dice5, Users,
   ChevronLeft, Trophy
 } from 'lucide-react';
-import { rifas as initialRifas, type Rifa } from '../data/mockData';
+import { rifas as initialRifas, type Rifa, type TicketInfo } from '../data/mockData';
 import { toast } from 'sonner';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
 
@@ -26,7 +26,13 @@ export function RifasPage() {
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
   const [buyerPaid, setBuyerPaid] = useState(true);
-  const { isHidden } = useFinancialPrivacy();
+  const [createModal, setCreateModal] = useState(false);
+  const [newRifaName, setNewRifaName] = useState('');
+  const [newRifaPrize, setNewRifaPrize] = useState('');
+  const [newRifaPrice, setNewRifaPrice] = useState('');
+  const [newRifaTickets, setNewRifaTickets] = useState('');
+  const [newRifaDrawDate, setNewRifaDrawDate] = useState('');
+  const { isHidden, formatMoney } = useFinancialPrivacy();
   const sorteoIntervalRef = useRef<any>(null);
 
   const openSell = (rifa: Rifa) => {
@@ -68,6 +74,38 @@ export function RifasPage() {
 
   useEffect(() => { return () => { if (sorteoIntervalRef.current) clearInterval(sorteoIntervalRef.current); }; }, []);
 
+  const closeModals = useCallback(() => {
+    setSellModal(false);
+    setSorteoModal(null);
+    setCreateModal(false);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModals(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [closeModals]);
+
+  const openCreate = () => {
+    setNewRifaName(''); setNewRifaPrize(''); setNewRifaPrice(''); setNewRifaTickets(''); setNewRifaDrawDate('');
+    setCreateModal(true);
+  };
+
+  const handleCreateRifa = () => {
+    if (!newRifaName || !newRifaPrize || !newRifaPrice || !newRifaTickets || !newRifaDrawDate) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
+    const total = parseInt(newRifaTickets);
+    const tickets: TicketInfo[] = Array.from({ length: total }, (_, i) => ({ number: i + 1, sold: false, paid: false }));
+    const newRifa: Rifa = {
+      id: Date.now().toString(), name: newRifaName, description: newRifaPrize, prize: newRifaPrize,
+      pricePerTicket: parseFloat(newRifaPrice), totalTickets: total, soldTickets: 0,
+      startDate: new Date().toISOString().split('T')[0], endDate: newRifaDrawDate, drawDate: newRifaDrawDate,
+      status: 'activa', createdBy: 'Juan Pérez', tickets,
+    };
+    setRifas(prev => [newRifa, ...prev]);
+    setCreateModal(false);
+    toast.success('[CREATED]');
+  };
+
   const inputStyle: React.CSSProperties = { fontFamily: mono, fontSize: '13px', color: nd.textPrimary, background: 'transparent', borderBottom: `1px solid ${nd.borderVisible}`, padding: '8px 0', width: '100%', outline: 'none' };
 
   // DETAIL VIEW
@@ -97,13 +135,13 @@ export function RifasPage() {
           {[
             { label: 'VENDIDOS', value: r.soldTickets.toString(), color: nd.raffle },
             { label: 'DISPONIBLES', value: (r.totalTickets - r.soldTickets).toString(), color: nd.success },
-            { label: 'INGRESOS', value: `$${income.toLocaleString()}`, color: nd.textDisplay, fin: true },
-            { label: 'PRECIO/BOLETO', value: `$${r.pricePerTicket}`, color: nd.warning, fin: true },
+            { label: 'INGRESOS', value: formatMoney(income), color: nd.textDisplay, fin: true },
+            { label: 'PRECIO/BOLETO', value: formatMoney(r.pricePerTicket), color: nd.warning, fin: true },
           ].map(s => (
             <div key={s.label} style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px', padding: '16px' }}>
               <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.textSecondary }}>{s.label}</p>
               <p style={{ fontFamily: mono, fontSize: '22px', fontWeight: 700, color: s.color, lineHeight: 1, marginTop: '6px' }}>
-                {s.fin && isHidden ? '$•••••' : s.value}
+                {s.value}
               </p>
             </div>
           ))}
@@ -233,7 +271,7 @@ export function RifasPage() {
           <h1 style={{ fontFamily: "'Doto', monospace", fontSize: '36px', fontWeight: 700, color: nd.textDisplay, letterSpacing: '-0.02em', lineHeight: 1.1 }}>Rifas</h1>
           <p style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary, textTransform: 'uppercase', marginTop: '8px' }}>GESTION DE BOLETOS</p>
         </div>
-        <button className="flex items-center gap-2 cursor-pointer shrink-0"
+        <button onClick={openCreate} className="flex items-center gap-2 cursor-pointer shrink-0"
           style={{ height: '44px', padding: '0 24px', background: nd.textDisplay, color: nd.black, borderRadius: '999px', fontFamily: mono, fontSize: '13px', letterSpacing: '0.06em' }}>
           <Plus size={16} strokeWidth={1.5} /> NUEVA RIFA
         </button>
@@ -270,7 +308,7 @@ export function RifasPage() {
               <div className="space-y-1 mb-4">
                 <div className="flex justify-between">
                   <span style={{ fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>PRECIO</span>
-                  <span style={{ fontFamily: mono, fontSize: '12px', color: nd.textPrimary }}>${r.pricePerTicket}</span>
+                  <span style={{ fontFamily: mono, fontSize: '12px', color: nd.textPrimary }}>{formatMoney(r.pricePerTicket)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span style={{ fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>SORTEO</span>
@@ -303,6 +341,31 @@ export function RifasPage() {
           );
         })}
       </div>
+
+      {/* Create Modal */}
+      {createModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={() => setCreateModal(false)}>
+          <div className="w-full max-w-[500px] max-h-[90vh] overflow-y-auto" style={{ background: nd.surface, border: `1px solid ${nd.borderVisible}`, borderRadius: '16px', padding: '32px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary }}>NUEVA RIFA</span>
+              <button onClick={() => setCreateModal(false)} className="cursor-pointer" style={{ color: nd.textDisabled }}><X size={16} strokeWidth={1.5} /></button>
+            </div>
+            <div className="space-y-5">
+              <div><label style={{ display: 'block', marginBottom: '8px', fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>NOMBRE</label><input value={newRifaName} onChange={e => setNewRifaName(e.target.value)} placeholder="Ej: Rifa Navideña" style={inputStyle} /></div>
+              <div><label style={{ display: 'block', marginBottom: '8px', fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>PREMIO</label><input value={newRifaPrize} onChange={e => setNewRifaPrize(e.target.value)} placeholder="Ej: iPhone 15" style={inputStyle} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label style={{ display: 'block', marginBottom: '8px', fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>PRECIO / BOLETO</label><input value={newRifaPrice} onChange={e => setNewRifaPrice(e.target.value)} type="number" placeholder="50" style={inputStyle} /></div>
+                <div><label style={{ display: 'block', marginBottom: '8px', fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>TOTAL BOLETOS</label><input value={newRifaTickets} onChange={e => setNewRifaTickets(e.target.value)} type="number" placeholder="100" style={inputStyle} /></div>
+              </div>
+              <div><label style={{ display: 'block', marginBottom: '8px', fontFamily: mono, fontSize: '10px', color: nd.textSecondary, letterSpacing: '0.06em' }}>FECHA SORTEO</label><input value={newRifaDrawDate} onChange={e => setNewRifaDrawDate(e.target.value)} type="date" style={inputStyle} /></div>
+            </div>
+            <div className="flex gap-3 mt-8">
+              <button onClick={() => setCreateModal(false)} className="flex-1 h-11 cursor-pointer" style={{ border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', color: nd.textSecondary, background: 'transparent' }}>CANCELAR</button>
+              <button onClick={handleCreateRifa} className="flex-1 h-11 cursor-pointer" style={{ background: nd.raffle, color: '#fff', borderRadius: '999px', fontFamily: mono, fontSize: '12px' }}>CREAR RIFA</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sell Modal */}
       {sellModal && selectedRifa && (
@@ -343,7 +406,7 @@ export function RifasPage() {
               </div>
               {selectedTickets.length > 0 && (
                 <p style={{ fontFamily: mono, fontSize: '11px', color: nd.raffle, marginTop: '8px' }}>
-                  {selectedTickets.length} SEL · ${(selectedTickets.length * selectedRifa.pricePerTicket).toLocaleString()}
+                  {selectedTickets.length} SEL · {formatMoney(selectedTickets.length * selectedRifa.pricePerTicket)}
                 </p>
               )}
             </div>
