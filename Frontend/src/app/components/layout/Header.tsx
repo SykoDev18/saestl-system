@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { Bell, ChevronDown, Menu, User, Settings, LogOut, AlertTriangle, Info, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { notifications } from '../../data/mockData';
@@ -26,6 +26,17 @@ export function Header({ sidebarCollapsed, onMenuClick }: HeaderProps) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const closeDropdowns = useCallback(() => {
+    setUserMenuOpen(false);
+    setNotifOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeDropdowns(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [closeDropdowns]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
