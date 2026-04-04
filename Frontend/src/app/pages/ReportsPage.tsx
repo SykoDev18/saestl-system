@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
@@ -28,9 +29,15 @@ const tooltipStyle = {
 };
 
 export function ReportsPage() {
-  const { isHidden } = useFinancialPrivacy();
+  const { formatMoney } = useFinancialPrivacy();
   const totalIngresos = transactions.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
   const totalEgresos = transactions.filter(t => t.type === 'egreso').reduce((a, t) => a + t.amount, 0);
+
+  const computedExpenseCategories = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.filter(t => t.type === 'egreso').forEach(t => map.set(t.category, (map.get(t.category) || 0) + t.amount));
+    return Array.from(map, ([name, value]) => ({ name, value }));
+  }, []);
 
   const card = (bg: string, border: string, radius: string, padding: string, mb: string): React.CSSProperties => ({
     background: bg, border: `1px solid ${border}`, borderRadius: radius, padding, marginBottom: mb,
@@ -56,17 +63,17 @@ export function ReportsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" style={{ marginBottom: '32px' }}>
         {[
-          { label: 'INGRESOS', value: `$${totalIngresos.toLocaleString()}`, color: nd.success, icon: TrendingUp },
-          { label: 'EGRESOS', value: `$${totalEgresos.toLocaleString()}`, color: nd.error, icon: TrendingDown },
-          { label: 'BALANCE', value: `$${(totalIngresos - totalEgresos).toLocaleString()}`, color: nd.textDisplay, icon: DollarSign },
-          { label: 'TX TOTAL', value: transactions.length.toString(), color: nd.textSecondary, icon: FileText, notFinancial: true },
+          { label: 'INGRESOS', value: formatMoney(totalIngresos), color: nd.success, icon: TrendingUp },
+          { label: 'EGRESOS', value: formatMoney(totalEgresos), color: nd.error, icon: TrendingDown },
+          { label: 'BALANCE', value: formatMoney(totalIngresos - totalEgresos), color: nd.textDisplay, icon: DollarSign },
+          { label: 'TX TOTAL', value: transactions.length.toString(), color: nd.textSecondary, icon: FileText },
         ].map(s => (
           <div key={s.label} style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px', padding: '20px' }}>
             <div className="flex items-start justify-between">
               <div>
                 <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.textSecondary }}>{s.label}</p>
                 <p style={{ fontFamily: mono, fontSize: '24px', fontWeight: 700, color: s.color, lineHeight: 1, marginTop: '8px' }}>
-                  {!('notFinancial' in s) && isHidden ? '$•••••' : s.value}
+                  {s.value}
                 </p>
               </div>
               <s.icon size={16} strokeWidth={1.5} style={{ color: nd.textDisabled }} />
@@ -127,7 +134,7 @@ export function ReportsPage() {
             EGRESOS POR CATEGORIA
           </span>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={expenseCategories}>
+            <BarChart data={computedExpenseCategories}>
               <CartesianGrid stroke={nd.border} horizontal vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 9, fill: nd.textDisabled, fontFamily: mono }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: nd.textDisabled, fontFamily: mono }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />

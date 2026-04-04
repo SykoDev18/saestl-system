@@ -11,7 +11,7 @@ const nd = {
 const mono = "'Space Mono', monospace";
 
 export function BudgetsPage() {
-  const { isHidden } = useFinancialPrivacy();
+  const { formatMoney } = useFinancialPrivacy();
   const totalAllocated = budgets.reduce((a, b) => a + b.allocated, 0);
   const totalSpent = budgets.reduce((a, b) => a + b.spent, 0);
   const totalRemaining = totalAllocated - totalSpent;
@@ -38,14 +38,14 @@ export function BudgetsPage() {
       {/* Hero stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" style={{ marginBottom: '32px' }}>
         {[
-          { label: 'TOTAL ASIGNADO', value: `$${totalAllocated.toLocaleString()}`, color: nd.textDisplay },
-          { label: 'TOTAL GASTADO', value: `$${totalSpent.toLocaleString()}`, color: nd.error },
-          { label: 'DISPONIBLE', value: `$${totalRemaining.toLocaleString()}`, color: nd.success },
+          { label: 'TOTAL ASIGNADO', value: formatMoney(totalAllocated), color: nd.textDisplay },
+          { label: 'TOTAL GASTADO', value: formatMoney(totalSpent), color: nd.error },
+          { label: 'DISPONIBLE', value: formatMoney(totalRemaining), color: nd.success },
         ].map(s => (
           <div key={s.label} style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px', padding: '20px' }}>
             <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.textSecondary }}>{s.label}</p>
             <p style={{ fontFamily: mono, fontSize: '28px', fontWeight: 700, color: s.color, lineHeight: 1, marginTop: '8px' }}>
-              {isHidden ? '$•••••' : s.value}
+              {s.value}
             </p>
           </div>
         ))}
@@ -137,10 +137,10 @@ export function BudgetsPage() {
                 </div>
                 <div className="flex justify-between">
                   <span style={{ fontFamily: mono, fontSize: '10px', color: nd.textDisabled, letterSpacing: '0.04em' }}>
-                    {isHidden ? '$•••••' : `GASTADO $${b.spent.toLocaleString()}`}
+                    GASTADO {formatMoney(b.spent)}
                   </span>
                   <span style={{ fontFamily: mono, fontSize: '10px', color: nd.textDisabled, letterSpacing: '0.04em' }}>
-                    {isHidden ? '$•••••' : `RESTANTE $${remaining.toLocaleString()}`}
+                    RESTANTE {formatMoney(remaining)}
                   </span>
                 </div>
               </div>
