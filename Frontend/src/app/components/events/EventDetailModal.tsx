@@ -23,7 +23,7 @@ interface Props { event: Event; onClose: () => void; }
 export function EventDetailModal({ event, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<'info' | 'participantes' | 'estadisticas'>('info');
   const [searchParticipant, setSearchParticipant] = useState('');
-  const { isHidden } = useFinancialPrivacy();
+  const { isHidden, formatMoney } = useFinancialPrivacy();
 
   const tc = typeColors[event.type] || nd.textSecondary;
   const d = new Date(event.date);
@@ -122,7 +122,7 @@ export function EventDetailModal({ event, onClose }: Props) {
                   {[
                     { icon: MapPin, label: 'UBICACION', value: event.location },
                     { icon: Users, label: 'CAPACIDAD', value: `${event.registered}/${event.capacity}` },
-                    { icon: DollarSign, label: 'COSTO', value: event.cost === 0 ? 'GRATIS' : isHidden ? '$•••••' : `$${event.cost}` },
+                    { icon: DollarSign, label: 'COSTO', value: event.cost === 0 ? 'GRATIS' : formatMoney(event.cost) },
                     ...(event.organizer ? [{ icon: User, label: 'ORGANIZADOR', value: event.organizer }] : []),
                   ].map(item => (
                     <div key={item.label}>
@@ -205,7 +205,7 @@ export function EventDetailModal({ event, onClose }: Props) {
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'REGISTROS', value: event.registered.toString(), color: tc },
-                  { label: 'INGRESOS', value: isHidden ? '$•••••' : `$${totalIncome.toLocaleString()}`, color: nd.success },
+                  { label: 'INGRESOS', value: formatMoney(totalIncome), color: nd.success },
                   { label: 'ASISTENCIA', value: `${participants.filter(p => p.attended).length}`, color: '#5B9BF6' },
                 ].map(s => (
                   <div key={s.label} style={{ background: nd.surfaceRaised, borderRadius: '8px', padding: '16px', textAlign: 'center' }}>

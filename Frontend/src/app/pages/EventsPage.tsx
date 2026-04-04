@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Plus, CalendarDays, List, Clock, MapPin, Users, Search, X,
   ChevronLeft, ChevronRight, DollarSign
@@ -35,7 +35,7 @@ export function EventsPage() {
   const [view, setView] = useState<'calendario' | 'lista'>('calendario');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const { isHidden } = useFinancialPrivacy();
+  const { isHidden, formatMoney } = useFinancialPrivacy();
 
   const today = new Date(2026, 2, 16);
   const [calMonth, setCalMonth] = useState(today.getMonth());
@@ -65,6 +65,17 @@ export function EventsPage() {
     if (filterStatus !== 'todos' && e.status !== filterStatus) return false;
     return true;
   }), [events, search, filterType, filterStatus]);
+
+  const closeModals = useCallback(() => {
+    setShowCreate(false);
+    setSelectedEvent(null);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModals(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [closeModals]);
 
   const handleCreateEvent = (eventData: Omit<Event, 'id' | 'registered' | 'participants'>) => {
     const newEvent: Event = { ...eventData, id: Date.now().toString(), registered: 0, participants: [] };
@@ -97,12 +108,12 @@ export function EventsPage() {
           { label: 'TOTAL', value: events.length.toString(), color: nd.textDisplay },
           { label: 'PROXIMOS', value: events.filter(e => e.status === 'proximo').length.toString(), color: nd.success },
           { label: 'REGISTRADOS', value: events.reduce((a, e) => a + e.registered, 0).toString(), color: '#5B9BF6' },
-          { label: 'PRESUPUESTO', value: `$${events.reduce((a, e) => a + e.budget, 0).toLocaleString()}`, color: nd.warning, fin: true },
+          { label: 'PRESUPUESTO', value: formatMoney(events.reduce((a, e) => a + e.budget, 0)), color: nd.warning },
         ].map(s => (
           <div key={s.label} style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px', padding: '16px' }}>
             <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.textSecondary }}>{s.label}</p>
             <p style={{ fontFamily: mono, fontSize: '22px', fontWeight: 700, color: s.color, lineHeight: 1, marginTop: '6px' }}>
-              {s.fin && isHidden ? '$•••••' : s.value}
+              {s.value}
             </p>
           </div>
         ))}
