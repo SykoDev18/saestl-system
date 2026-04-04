@@ -7,6 +7,7 @@ export interface Transaction {
   responsible: string;
   amount: number;
   status: 'pendiente' | 'aprobado' | 'rechazado';
+  metodoPago: 'Efectivo' | 'Transferencia' | 'Tarjeta';
 }
 
 export interface Rifa {
@@ -81,19 +82,41 @@ export interface Budget {
   category: string;
 }
 
+export interface Cuenta {
+  id: string;
+  description: string;
+  amount: number;
+  dueDate: string;
+  status: 'pendiente' | 'pagado' | 'vencido';
+  supplier: string;
+  category: string;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  type: 'warning' | 'info' | 'success';
+}
+
 export const transactions: Transaction[] = [
-  { id: '1', date: '2026-03-15', type: 'ingreso', category: 'Cuotas', description: 'Cuotas de Alumnos - Marzo', responsible: 'Juan Pérez', amount: 2500, status: 'aprobado' },
-  { id: '2', date: '2026-03-14', type: 'egreso', category: 'Materiales', description: 'Compra de materiales para evento', responsible: 'María García', amount: 850, status: 'aprobado' },
-  { id: '3', date: '2026-03-13', type: 'ingreso', category: 'Rifas', description: 'Venta de boletos - Rifa iPhone', responsible: 'Carlos López', amount: 1500, status: 'aprobado' },
-  { id: '4', date: '2026-03-12', type: 'egreso', category: 'Servicios', description: 'Pago DJ para fiesta de bienvenida', responsible: 'Ana Martínez', amount: 3000, status: 'pendiente' },
-  { id: '5', date: '2026-03-11', type: 'ingreso', category: 'Eventos', description: 'Entradas Torneo Deportivo', responsible: 'Juan Pérez', amount: 4200, status: 'aprobado' },
-  { id: '6', date: '2026-03-10', type: 'egreso', category: 'Alimentos', description: 'Catering para reunión de bienvenida', responsible: 'María García', amount: 1200, status: 'aprobado' },
-  { id: '7', date: '2026-03-09', type: 'ingreso', category: 'Patrocinios', description: 'Patrocinio empresa XYZ', responsible: 'Carlos López', amount: 5000, status: 'aprobado' },
-  { id: '8', date: '2026-03-08', type: 'egreso', category: 'Equipamiento', description: 'Compra de equipo audiovisual', responsible: 'Juan Pérez', amount: 1500, status: 'rechazado' },
-  { id: '9', date: '2026-03-07', type: 'ingreso', category: 'Cuotas', description: 'Cuotas de alumnos rezagados', responsible: 'Ana Martínez', amount: 800, status: 'pendiente' },
-  { id: '10', date: '2026-03-06', type: 'egreso', category: 'Transporte', description: 'Renta de autobús para viaje', responsible: 'Carlos López', amount: 2800, status: 'aprobado' },
-  { id: '11', date: '2026-03-05', type: 'ingreso', category: 'Rifas', description: 'Venta boletos - Rifa Laptop', responsible: 'María García', amount: 3500, status: 'aprobado' },
-  { id: '12', date: '2026-03-04', type: 'egreso', category: 'Impresión', description: 'Impresión de carteles y volantes', responsible: 'Ana Martínez', amount: 450, status: 'aprobado' },
+  { id: '1', date: '2026-03-15', type: 'ingreso', category: 'Cuotas', description: 'Cuotas de Alumnos - Marzo', responsible: 'Juan Pérez', amount: 2500, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '2', date: '2026-03-14', type: 'egreso', category: 'Materiales', description: 'Compra de materiales para evento', responsible: 'María García', amount: 850, status: 'aprobado', metodoPago: 'Efectivo' },
+  { id: '3', date: '2026-03-13', type: 'ingreso', category: 'Rifas', description: 'Venta de boletos - Rifa iPhone', responsible: 'Carlos López', amount: 1500, status: 'aprobado', metodoPago: 'Efectivo' },
+  { id: '4', date: '2026-03-12', type: 'egreso', category: 'Servicios', description: 'Pago DJ para fiesta de bienvenida', responsible: 'Ana Martínez', amount: 3000, status: 'pendiente', metodoPago: 'Transferencia' },
+  { id: '5', date: '2026-03-11', type: 'ingreso', category: 'Eventos', description: 'Entradas Torneo Deportivo', responsible: 'Juan Pérez', amount: 4200, status: 'aprobado', metodoPago: 'Efectivo' },
+  { id: '6', date: '2026-03-10', type: 'egreso', category: 'Alimentos', description: 'Catering para reunión de bienvenida', responsible: 'María García', amount: 1200, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '7', date: '2026-03-09', type: 'ingreso', category: 'Patrocinios', description: 'Patrocinio empresa XYZ', responsible: 'Carlos López', amount: 5000, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '8', date: '2026-03-08', type: 'egreso', category: 'Equipamiento', description: 'Compra de equipo audiovisual', responsible: 'Juan Pérez', amount: 1500, status: 'rechazado', metodoPago: 'Tarjeta' },
+  { id: '9', date: '2026-03-07', type: 'ingreso', category: 'Cuotas', description: 'Cuotas de alumnos rezagados', responsible: 'Ana Martínez', amount: 800, status: 'pendiente', metodoPago: 'Efectivo' },
+  { id: '10', date: '2026-03-06', type: 'egreso', category: 'Transporte', description: 'Renta de autobús para viaje', responsible: 'Carlos López', amount: 2800, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '11', date: '2026-03-05', type: 'ingreso', category: 'Rifas', description: 'Venta boletos - Rifa Laptop', responsible: 'María García', amount: 3500, status: 'aprobado', metodoPago: 'Efectivo' },
+  { id: '12', date: '2026-03-04', type: 'egreso', category: 'Impresión', description: 'Impresión de carteles y volantes', responsible: 'Ana Martínez', amount: 450, status: 'aprobado', metodoPago: 'Efectivo' },
+  { id: '13', date: '2026-03-03', type: 'ingreso', category: 'Eventos', description: 'Inscripciones Hackathon UAEH', responsible: 'Juan Pérez', amount: 1800, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '14', date: '2026-03-02', type: 'egreso', category: 'Servicios', description: 'Diseño gráfico imagen semestral', responsible: 'María García', amount: 1500, status: 'aprobado', metodoPago: 'Transferencia' },
+  { id: '15', date: '2026-03-01', type: 'ingreso', category: 'Cuotas', description: 'Cuotas extemporáneas Febrero', responsible: 'Ana Martínez', amount: 1200, status: 'pendiente', metodoPago: 'Efectivo' },
 ];
 
 function generateTickets(total: number, sold: number): TicketInfo[] {
@@ -246,8 +269,18 @@ export const chartData = {
   ],
 };
 
-export const notifications = [
-  { id: '1', title: 'Transacción pendiente', message: 'Pago DJ requiere aprobación - $3,000', time: 'Hace 5 min', read: false, type: 'warning' as const },
-  { id: '2', title: 'Rifa por cerrar', message: 'Rifa iPhone 15 Pro cierra en 14 días', time: 'Hace 1 hora', read: false, type: 'info' as const },
-  { id: '3', title: 'Nuevo registro', message: '5 alumnos se registraron al Torneo de Fútbol', time: 'Hace 3 horas', read: true, type: 'success' as const },
+export const notifications: Notification[] = [
+  { id: '1', title: 'Transacción pendiente', message: 'Pago DJ requiere aprobación - $3,000', time: 'Hace 5 min', read: false, type: 'warning' },
+  { id: '2', title: 'Rifa por cerrar', message: 'Rifa iPhone 15 Pro cierra en 14 días', time: 'Hace 1 hora', read: false, type: 'info' },
+  { id: '3', title: 'Nuevo registro', message: '5 alumnos se registraron al Torneo de Fútbol', time: 'Hace 3 horas', read: true, type: 'success' },
+  { id: '4', title: 'Cuenta por vencer', message: 'Diseño de imagen semestral vence el 10 Mar', time: 'Hace 6 horas', read: false, type: 'warning' },
+  { id: '5', title: 'Presupuesto al límite', message: 'Eventos Sociales al 83% de ejecución', time: 'Hace 1 día', read: true, type: 'warning' },
+];
+
+export const cuentas: Cuenta[] = [
+  { id: '1', description: 'Renta de sonido para evento', amount: 3500, dueDate: '2026-03-25', status: 'pendiente', supplier: 'Audio Pro MX', category: 'Servicios' },
+  { id: '2', description: 'Impresión de playeras', amount: 4800, dueDate: '2026-03-20', status: 'pendiente', supplier: 'Imprenta Express', category: 'Materiales' },
+  { id: '3', description: 'Catering fiesta bienvenida', amount: 6000, dueDate: '2026-02-28', status: 'pagado', supplier: 'Banquetes Diana', category: 'Alimentos' },
+  { id: '4', description: 'Diseño de imagen semestral', amount: 1500, dueDate: '2026-03-10', status: 'vencido', supplier: 'Freelancer Design', category: 'Servicios' },
+  { id: '5', description: 'Trofeos torneo deportivo', amount: 2200, dueDate: '2026-03-30', status: 'pendiente', supplier: 'Trofeos y Medallas', category: 'Materiales' },
 ];
