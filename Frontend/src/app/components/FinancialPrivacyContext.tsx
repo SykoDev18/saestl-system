@@ -5,6 +5,7 @@ interface FinancialPrivacyContextType {
   toggle: () => void;
   mask: (value: string) => string;
   maskNumber: (value: number, prefix?: string) => string;
+  formatMoney: (amount: number) => string;
 }
 
 const FinancialPrivacyContext = createContext<FinancialPrivacyContextType>({
@@ -12,6 +13,7 @@ const FinancialPrivacyContext = createContext<FinancialPrivacyContextType>({
   toggle: () => {},
   mask: (v) => v,
   maskNumber: (v, p) => `${p || ''}${v.toLocaleString()}`,
+  formatMoney: (amount) => `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`,
 });
 
 export function FinancialPrivacyProvider({ children }: { children: ReactNode }) {
@@ -30,8 +32,13 @@ export function FinancialPrivacyProvider({ children }: { children: ReactNode }) 
     return `${prefix}•••••`;
   };
 
+  const formatMoney = (amount: number): string => {
+    if (isHidden) return '$•••••';
+    return `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`;
+  };
+
   return (
-    <FinancialPrivacyContext.Provider value={{ isHidden, toggle, mask, maskNumber }}>
+    <FinancialPrivacyContext.Provider value={{ isHidden, toggle, mask, maskNumber, formatMoney }}>
       {children}
     </FinancialPrivacyContext.Provider>
   );
