@@ -1,0 +1,56 @@
+services:
+  # ────────────── PostgreSQL ──────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: saestl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-saestl_db}
+      POSTGRES_USER: ${POSTGRES_USER:-saestl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saestl_secret}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saestl} -d ${POSTGRES_DB:-saestl_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ────────────── Backend (Spring Boot) ──────────────
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: saestl-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-saestl_db}
+      POSTGRES_USER: ${POSTGRES_USER:-saestl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saestl_secret}
+      JWT_SECRET: ${JWT_SECRET:-saestl-dev-jwt-secret-key-must-be-at-least-256-bits-long-change-in-prod}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+    ports:
+      - "8080:8080"
+
+  # ────────────── Frontend (React + Vite) ──────────────
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: saestl-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
