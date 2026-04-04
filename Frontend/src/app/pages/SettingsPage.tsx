@@ -17,7 +17,10 @@ export function SettingsPage() {
   const [notifPush, setNotifPush] = useState(true);
   const [notifSms, setNotifSms] = useState(false);
 
-  const handleSave = () => toast.success('[SAVED]');
+  const handleSave = () => {
+    if (!name.trim() || !email.trim() || !phone.trim()) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
+    toast.success('[SAVED]');
+  };
 
   const inputStyle: React.CSSProperties = {
     fontFamily: mono, fontSize: '13px', color: nd.textPrimary,
