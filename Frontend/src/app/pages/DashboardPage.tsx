@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Wallet, TrendingUp, TrendingDown, Ticket, ArrowRight,
@@ -6,7 +7,7 @@ import {
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { transactions, events, budgets, chartData } from '../data/mockData';
+import { transactions, events, budgets, rifas, chartData } from '../data/mockData';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
 
 const nd = {
@@ -26,13 +27,6 @@ const nd = {
   raffle: '#a855f7',
 };
 
-const statsCards = [
-  { label: 'BALANCE ACTUAL', value: '$15,450', raw: 15450, trend: '+12%', color: nd.success, icon: Wallet, isFinancial: true },
-  { label: 'INGRESOS MES', value: '$8,750', raw: 8750, info: '23 TX', color: nd.textDisplay, icon: TrendingUp, isFinancial: true },
-  { label: 'EGRESOS MES', value: '$3,200', raw: 3200, info: '15 TX', color: nd.error, icon: TrendingDown, isFinancial: true },
-  { label: 'RIFAS ACTIVAS', value: '3', raw: 3, info: '245 BOLETOS', color: nd.raffle, icon: Ticket, isFinancial: false },
-];
-
 const quickActions = [
   { label: 'NUEVA TX', icon: Plus, path: '/transacciones' },
   { label: 'NUEVA RIFA', icon: Ticket, path: '/rifas' },
@@ -42,9 +36,27 @@ const quickActions = [
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { isHidden } = useFinancialPrivacy();
+  const { isHidden, formatMoney } = useFinancialPrivacy();
   const recentTransactions = transactions.slice(0, 5);
   const upcomingEvents = events.filter(e => e.status === 'proximo').slice(0, 3);
+
+  const stats = useMemo(() => {
+    const totalIngresos = transactions.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
+    const totalEgresos = transactions.filter(t => t.type === 'egreso').reduce((a, t) => a + t.amount, 0);
+    const balance = totalIngresos - totalEgresos;
+    const ingresoCount = transactions.filter(t => t.type === 'ingreso').length;
+    const egresoCount = transactions.filter(t => t.type === 'egreso').length;
+    const activeRifas = rifas.filter(r => r.status === 'activa');
+    const totalSoldTickets = activeRifas.reduce((a, r) => a + r.soldTickets, 0);
+    return { totalIngresos, totalEgresos, balance, ingresoCount, egresoCount, activeRifas: activeRifas.length, totalSoldTickets };
+  }, []);
+
+  const statsCards = [
+    { label: 'BALANCE ACTUAL', value: formatMoney(stats.balance), color: nd.success, icon: Wallet, isFinancial: true },
+    { label: 'INGRESOS MES', value: formatMoney(stats.totalIngresos), info: `${stats.ingresoCount} TX`, color: nd.textDisplay, icon: TrendingUp, isFinancial: true },
+    { label: 'EGRESOS MES', value: formatMoney(stats.totalEgresos), info: `${stats.egresoCount} TX`, color: nd.error, icon: TrendingDown, isFinancial: true },
+    { label: 'RIFAS ACTIVAS', value: stats.activeRifas.toString(), info: `${stats.totalSoldTickets} BOLETOS`, color: nd.raffle, icon: Ticket, isFinancial: false },
+  ];
 
   return (
     <div style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -136,19 +148,8 @@ export function DashboardPage() {
                   marginTop: '8px',
                   lineHeight: 1,
                 }}>
-                  {card.isFinancial && isHidden ? '$•••••' : card.value}
+                  {card.value}
                 </p>
-                {card.trend && (
-                  <span style={{
-                    fontFamily: "'Space Mono', monospace",
-                    fontSize: '11px',
-                    color: nd.success,
-                    marginTop: '8px',
-                    display: 'inline-block',
-                  }}>
-                    {card.trend}
-                  </span>
-                )}
                 {card.info && (
                   <p style={{
                     fontFamily: "'Space Mono', monospace",
@@ -442,7 +443,7 @@ export function DashboardPage() {
                       color: nd.textDisabled,
                       letterSpacing: '0.04em',
                     }}>
-                      {isHidden ? '$•••••' : `$${b.spent.toLocaleString()}`}
+                      {formatMoney(b.spent)}
                     </span>
                     <span style={{
                       fontFamily: "'Space Mono', monospace",
@@ -450,7 +451,7 @@ export function DashboardPage() {
                       color: nd.textDisabled,
                       letterSpacing: '0.04em',
                     }}>
-                      {isHidden ? '$•••••' : `$${b.allocated.toLocaleString()}`}
+                      {formatMoney(b.allocated)}
                     </span>
                   </div>
                 </div>
