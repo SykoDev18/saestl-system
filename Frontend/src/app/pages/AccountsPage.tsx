@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Clock, CheckCircle, AlertTriangle, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { cuentas as initialCuentas, type Cuenta } from '../data/mockData';
+import { type Cuenta } from '../data/mockData';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { cuentaService } from '../services/cuentaService';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -18,7 +19,8 @@ const statusMap: Record<string, { color: string; label: string }> = {
 };
 
 export function AccountsPage() {
-  const [accounts, setAccounts] = useState(initialCuentas);
+  const [accounts, setAccounts] = useState<Cuenta[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('todos');
   const [createModal, setCreateModal] = useState(false);
   const [newDesc, setNewDesc] = useState('');
@@ -40,9 +42,22 @@ export function AccountsPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [closeModals]);
 
-  const markPaid = (id: string) => {
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: 'pagado' as const } : a));
-    toast.success('[PAID]');
+  useEffect(() => {
+    cuentaService
+      .list()
+      .then(setAccounts)
+      .catch(() => toast.error('No se pudieron cargar cuentas'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const markPaid = async (id: string) => {
+    try {
+      const updated = await cuentaService.markPaid(id);
+      setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a));
+      toast.success('[PAID]');
+    } catch {
+      toast.error('No se pudo marcar como pagada');
+    }
   };
 
   const openCreate = () => {
@@ -50,15 +65,22 @@ export function AccountsPage() {
     setCreateModal(true);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newDesc || !newAmount || !newDueDate || !newSupplier || !newCategory) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
-    const newCuenta: Cuenta = {
-      id: Date.now().toString(), description: newDesc, amount: parseFloat(newAmount),
-      dueDate: newDueDate, status: 'pendiente', supplier: newSupplier, category: newCategory,
-    };
-    setAccounts(prev => [newCuenta, ...prev]);
-    setCreateModal(false);
-    toast.success('[CREATED]');
+    try {
+      const created = await cuentaService.create({
+        description: newDesc,
+        amount: parseFloat(newAmount),
+        dueDate: newDueDate,
+        supplier: newSupplier,
+        category: newCategory,
+      });
+      setAccounts(prev => [created, ...prev]);
+      setCreateModal(false);
+      toast.success('[CREATED]');
+    } catch {
+      toast.error('No se pudo guardar cuenta');
+    }
   };
 
   const inputStyle: React.CSSProperties = { fontFamily: mono, fontSize: '13px', color: nd.textPrimary, background: 'transparent', borderBottom: `1px solid ${nd.borderVisible}`, padding: '8px 0', width: '100%', outline: 'none' };
@@ -121,6 +143,11 @@ export function AccountsPage() {
 
       {/* List */}
       <div style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px' }}>
+        {loading && (
+          <div className="px-5 py-4 text-center" style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary }}>
+            [CARGANDO CUENTAS]
+          </div>
+        )}
         {filtered.map((account, i) => {
           const st = statusMap[account.status];
           return (

@@ -8,34 +8,36 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "transacciones")
+@Table(name = "cuentas")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Transaccion {
+public class Cuenta {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 10)
-    private String tipo;
+    @Column(nullable = false, length = 300)
+    private String descripcion;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal monto;
 
-    @Column(length = 500)
-    private String descripcion;
+    @Column(name = "fecha_limite", nullable = false)
+    private LocalDate fechaLimite;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Builder.Default
-    private LocalDate fecha = LocalDate.now();
+    private String estado = "PENDIENTE";
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "categoria_id", nullable = false)
-    private Categoria categoria;
+    @Column(name = "proveedor", nullable = false, length = 200)
+    private String proveedor;
+
+    @Column(name = "categoria", nullable = false, length = 120)
+    private String categoria;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usuario_id", nullable = false)
@@ -44,17 +46,6 @@ public class Transaccion {
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private String estado = "PENDIENTE";
-
-    @Column(name = "metodo_pago", nullable = false, length = 20)
-    @Builder.Default
-    private String metodoPago = "EFECTIVO";
-
-    @Column(length = 120)
-    private String responsable;
 
     @Column(name = "updated_at", nullable = false)
     @Builder.Default

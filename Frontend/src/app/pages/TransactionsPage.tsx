@@ -3,9 +3,10 @@ import {
   Search, Download, Plus, Eye, Pencil, Trash2, X,
   ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Upload
 } from 'lucide-react';
-import { transactions, type Transaction } from '../data/mockData';
+import { type Transaction } from '../data/mockData';
 import { toast } from 'sonner';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { transactionService } from '../services/transactionService';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -18,7 +19,8 @@ const grotesk = "'Space Grotesk', sans-serif";
 const categories = ['Todas', 'Cuotas', 'Rifas', 'Eventos', 'Materiales', 'Servicios', 'Alimentos', 'Patrocinios', 'Equipamiento', 'Transporte', 'Impresion'];
 
 export function TransactionsPage() {
-  const [data, setData] = useState<Transaction[]>(transactions);
+  const [data, setData] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('todos');
   const [catFilter, setCatFilter] = useState('Todas');
@@ -49,6 +51,14 @@ export function TransactionsPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [closeModals]);
 
+  useEffect(() => {
+    transactionService
+      .list()
+      .then(setData)
+      .catch(() => toast.error('No se pudieron cargar transacciones'))
+      .finally(() => setLoading(false));
+  }, []);
+
   const filtered = useMemo(() => data.filter(t => {
     if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false;
     if (typeFilter !== 'todos' && t.type !== typeFilter) return false;
@@ -72,29 +82,50 @@ export function TransactionsPage() {
     setFormDate(tx.date); setFormPayment(tx.metodoPago); setFormResponsible(tx.responsible); setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formAmount || !formDescription) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
+    const payload: Omit<Transaction, 'id'> = {
+      date: formDate,
+      type: formType,
+      category: formCategory,
+      description: formDescription,
+      responsible: formResponsible,
+      amount: parseFloat(formAmount),
+      status: editingTx?.status || 'pendiente',
+      metodoPago: formPayment,
+    };
+
     if (editingTx) {
-      setData(prev => prev.map(t => t.id === editingTx.id ? {
-        ...t, type: formType, amount: parseFloat(formAmount), category: formCategory,
-        description: formDescription, date: formDate, metodoPago: formPayment, responsible: formResponsible,
-      } : t));
-      toast.success('[SAVED]');
+      try {
+        const updated = await transactionService.update(editingTx.id, payload);
+        setData(prev => prev.map(t => t.id === updated.id ? updated : t));
+        toast.success('[SAVED]');
+      } catch {
+        toast.error('No se pudo actualizar');
+        return;
+      }
     } else {
-      const newTx: Transaction = {
-        id: Date.now().toString(), date: formDate, type: formType, category: formCategory,
-        description: formDescription, responsible: formResponsible, amount: parseFloat(formAmount), status: 'pendiente', metodoPago: formPayment,
-      };
-      setData(prev => [newTx, ...prev]);
-      toast.success('[CREATED]');
+      try {
+        const created = await transactionService.create(payload);
+        setData(prev => [created, ...prev]);
+        toast.success('[CREATED]');
+      } catch {
+        toast.error('No se pudo guardar');
+        return;
+      }
     }
     setModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setData(prev => prev.filter(t => t.id !== id));
-    setDetailModal(null);
-    toast.success('[DELETED]');
+  const handleDelete = async (id: string) => {
+    try {
+      await transactionService.remove(id);
+      setData(prev => prev.filter(t => t.id !== id));
+      setDetailModal(null);
+      toast.success('[DELETED]');
+    } catch {
+      toast.error('No se pudo eliminar');
+    }
   };
 
   const statusLabel = (s: string) => {
@@ -178,6 +209,11 @@ export function TransactionsPage() {
 
       {/* Table */}
       <div style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px' }}>
+        {loading && (
+          <div className="px-4 py-4 text-center" style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary }}>
+            [CARGANDO TRANSACCIONES]
+          </div>
+        )}
         {/* Desktop */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
