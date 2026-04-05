@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Wallet, TrendingUp, TrendingDown, Ticket, ArrowRight,
@@ -7,8 +7,21 @@ import {
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { transactions, events, budgets, rifas, chartData } from '../data/mockData';
+import { toast } from 'sonner';
+import {
+  type Budget,
+  type Cuenta,
+  type Event,
+  type Rifa,
+  type Transaction,
+  budgets as fallbackBudgets,
+} from '../data/mockData';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { transactionService } from '../services/transactionService';
+import { eventService } from '../services/eventService';
+import { rifaService } from '../services/rifaService';
+import { cuentaService } from '../services/cuentaService';
+import { api } from '../api/client';
 
 const nd = {
   black: '#000000',
@@ -34,28 +47,163 @@ const quickActions = [
   { label: 'EXPORTAR', icon: FileDown, path: '/reportes' },
 ];
 
+function toMonthKey(dateValue: string) {
+  const d = new Date(dateValue);
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+
+function buildMonthlyChartData(transactions: Transaction[], rifas: Rifa[]) {
+  const now = new Date();
+  const months: Array<{ key: string; month: string; ingresos: number; egresos: number }> = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      month: d.toLocaleDateString('es-MX', { month: 'short' }).replace('.', ''),
+      ingresos: 0,
+      egresos: 0,
+    });
+  }
+
+  const monthMap = new Map(months.map((m) => [m.key, m]));
+
+  transactions
+    .filter((t) => t.status !== 'rechazado')
+    .forEach((t) => {
+      const monthItem = monthMap.get(toMonthKey(t.date));
+      if (!monthItem) return;
+      if (t.type === 'ingreso') monthItem.ingresos += t.amount;
+      else monthItem.egresos += t.amount;
+    });
+
+  rifas
+    .filter((r) => r.status === 'cerrada' || r.status === 'sorteada')
+    .forEach((r) => {
+      const closeDate = r.drawDate || r.endDate;
+      if (!closeDate) return;
+      const monthItem = monthMap.get(toMonthKey(closeDate));
+      if (!monthItem) return;
+      monthItem.ingresos += r.soldTickets * r.pricePerTicket;
+    });
+
+  return months;
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { isHidden, formatMoney } = useFinancialPrivacy();
-  const recentTransactions = transactions.slice(0, 5);
-  const upcomingEvents = events.filter(e => e.status === 'proximo').slice(0, 3);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [rifas, setRifas] = useState<Rifa[]>([]);
+  const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [budgetData, setBudgetData] = useState<Budget[]>(fallbackBudgets);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      setLoading(true);
+      const [txRes, eventRes, rifaRes, cuentaRes, presupuestoRes] = await Promise.allSettled([
+        transactionService.list(),
+        eventService.list(),
+        rifaService.list(),
+        cuentaService.list(),
+        api.get<Budget[]>('/presupuestos'),
+      ]);
+
+      if (txRes.status === 'fulfilled') setTransactions(txRes.value);
+      else toast.error('No se pudieron cargar transacciones');
+
+      if (eventRes.status === 'fulfilled') setEvents(eventRes.value);
+      else toast.error('No se pudieron cargar eventos');
+
+      if (rifaRes.status === 'fulfilled') setRifas(rifaRes.value);
+      else toast.error('No se pudieron cargar rifas');
+
+      if (cuentaRes.status === 'fulfilled') setCuentas(cuentaRes.value);
+      else toast.error('No se pudieron cargar cuentas');
+
+      if (presupuestoRes.status === 'fulfilled' && presupuestoRes.value.length > 0) {
+        setBudgetData(presupuestoRes.value);
+      } else {
+        setBudgetData(fallbackBudgets);
+      }
+
+      setLoading(false);
+    };
+
+    loadDashboardData();
+  }, []);
+
+  const recentTransactions = useMemo(
+    () => [...transactions]
+      .sort((a, b) => +new Date(b.date) - +new Date(a.date))
+      .slice(0, 5),
+    [transactions],
+  );
+
+  const upcomingEvents = useMemo(
+    () => [...events]
+      .filter((e) => e.status === 'proximo')
+      .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+      .slice(0, 3),
+    [events],
+  );
+
+  const monthlyChartData = useMemo(
+    () => buildMonthlyChartData(transactions, rifas),
+    [transactions, rifas],
+  );
 
   const stats = useMemo(() => {
-    const totalIngresos = transactions.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
-    const totalEgresos = transactions.filter(t => t.type === 'egreso').reduce((a, t) => a + t.amount, 0);
-    const balance = totalIngresos - totalEgresos;
-    const ingresoCount = transactions.filter(t => t.type === 'ingreso').length;
-    const egresoCount = transactions.filter(t => t.type === 'egreso').length;
+    const validTransactions = transactions.filter((t) => t.status !== 'rechazado');
+    const totalIngresos = validTransactions.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
+    const totalEgresos = validTransactions.filter(t => t.type === 'egreso').reduce((a, t) => a + t.amount, 0);
+    const pendingAccountsTotal = cuentas
+      .filter((c) => c.status === 'pendiente' || c.status === 'vencido')
+      .reduce((a, c) => a + c.amount, 0);
+    const pendingAccountsCount = cuentas.filter((c) => c.status === 'pendiente' || c.status === 'vencido').length;
+    const balance = totalIngresos - totalEgresos - pendingAccountsTotal;
+    const ingresoCount = validTransactions.filter(t => t.type === 'ingreso').length;
+    const egresoCount = validTransactions.filter(t => t.type === 'egreso').length;
     const activeRifas = rifas.filter(r => r.status === 'activa');
+    const closedRifasRevenue = rifas
+      .filter((r) => r.status === 'cerrada' || r.status === 'sorteada')
+      .reduce((a, r) => a + (r.soldTickets * r.pricePerTicket), 0);
     const totalSoldTickets = activeRifas.reduce((a, r) => a + r.soldTickets, 0);
-    return { totalIngresos, totalEgresos, balance, ingresoCount, egresoCount, activeRifas: activeRifas.length, totalSoldTickets };
-  }, []);
+    return {
+      totalIngresos,
+      totalEgresos,
+      balance,
+      ingresoCount,
+      egresoCount,
+      activeRifas: activeRifas.length,
+      totalSoldTickets,
+      pendingAccountsCount,
+      pendingAccountsTotal,
+      closedRifasRevenue,
+    };
+  }, [transactions, cuentas, rifas]);
 
   const statsCards = [
     { label: 'BALANCE ACTUAL', value: formatMoney(stats.balance), color: nd.success, icon: Wallet, isFinancial: true },
     { label: 'INGRESOS MES', value: formatMoney(stats.totalIngresos), info: `${stats.ingresoCount} TX`, color: nd.textDisplay, icon: TrendingUp, isFinancial: true },
-    { label: 'EGRESOS MES', value: formatMoney(stats.totalEgresos), info: `${stats.egresoCount} TX`, color: nd.error, icon: TrendingDown, isFinancial: true },
-    { label: 'RIFAS ACTIVAS', value: stats.activeRifas.toString(), info: `${stats.totalSoldTickets} BOLETOS`, color: nd.raffle, icon: Ticket, isFinancial: false },
+    {
+      label: 'EGRESOS + CXP',
+      value: formatMoney(stats.totalEgresos + stats.pendingAccountsTotal),
+      info: `${stats.egresoCount} TX + ${stats.pendingAccountsCount} CXP`,
+      color: nd.error,
+      icon: TrendingDown,
+      isFinancial: true,
+    },
+    {
+      label: 'RIFAS ACTIVAS',
+      value: stats.activeRifas.toString(),
+      info: `${stats.totalSoldTickets} BOLETOS | CIERRE ${formatMoney(stats.closedRifasRevenue)}`,
+      color: nd.raffle,
+      icon: Ticket,
+      isFinancial: false,
+    },
   ];
 
   return (
@@ -197,7 +345,7 @@ export function DashboardPage() {
             </span>
           </div>
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={chartData.monthly}>
+            <LineChart data={monthlyChartData}>
               <CartesianGrid stroke={nd.border} horizontal={true} vertical={false} />
               <XAxis
                 dataKey="month"
@@ -264,6 +412,26 @@ export function DashboardPage() {
             </button>
           </div>
           <div className="space-y-0">
+            {loading && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [CARGANDO EVENTOS]
+              </div>
+            )}
+            {!loading && upcomingEvents.length === 0 && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [SIN EVENTOS PROXIMOS]
+              </div>
+            )}
             {upcomingEvents.map((event, i) => {
               const d = new Date(event.date);
               return (
@@ -343,6 +511,26 @@ export function DashboardPage() {
             </button>
           </div>
           <div>
+            {loading && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [CARGANDO TRANSACCIONES]
+              </div>
+            )}
+            {!loading && recentTransactions.length === 0 && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [SIN TRANSACCIONES]
+              </div>
+            )}
             {recentTransactions.map((t, i) => (
               <div
                 key={t.id}
@@ -405,7 +593,27 @@ export function DashboardPage() {
             </button>
           </div>
           <div className="space-y-5">
-            {budgets.slice(0, 4).map((b) => {
+            {loading && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [CARGANDO PRESUPUESTOS]
+              </div>
+            )}
+            {!loading && budgetData.length === 0 && (
+              <div style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: '11px',
+                color: nd.textSecondary,
+                padding: '8px 0',
+              }}>
+                [SIN PRESUPUESTOS]
+              </div>
+            )}
+            {budgetData.slice(0, 4).map((b) => {
               const pct = Math.round((b.spent / b.allocated) * 100);
               const barColor = pct > 90 ? nd.error : pct > 70 ? nd.warning : nd.success;
               const segments = 20;

@@ -1,7 +1,12 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Wallet, AlertTriangle, CheckCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
-import { budgets } from '../data/mockData';
+import { toast } from 'sonner';
+import { type Budget, type Cuenta, type Transaction, budgets as fallbackBudgets } from '../data/mockData';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { transactionService } from '../services/transactionService';
+import { cuentaService } from '../services/cuentaService';
+import { api } from '../api/client';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -12,12 +17,68 @@ const mono = "'Space Mono', monospace";
 
 export function BudgetsPage() {
   const { formatMoney } = useFinancialPrivacy();
-  const totalAllocated = budgets.reduce((a, b) => a + b.allocated, 0);
-  const totalSpent = budgets.reduce((a, b) => a + b.spent, 0);
-  const totalRemaining = totalAllocated - totalSpent;
-  const totalPct = Math.round((totalSpent / totalAllocated) * 100);
+  const [budgets, setBudgets] = useState<Budget[]>(fallbackBudgets);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Cuenta[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const barData = budgets.map(b => ({
+  useEffect(() => {
+    const loadBudgetData = async () => {
+      setLoading(true);
+      const [budgetRes, txRes, accountRes] = await Promise.allSettled([
+        api.get<Budget[]>('/presupuestos'),
+        transactionService.list(),
+        cuentaService.list(),
+      ]);
+
+      if (budgetRes.status === 'fulfilled' && budgetRes.value.length > 0) {
+        setBudgets(budgetRes.value);
+      } else {
+        setBudgets(fallbackBudgets);
+      }
+
+      if (txRes.status === 'fulfilled') setTransactions(txRes.value);
+      else toast.error('No se pudieron cargar transacciones');
+
+      if (accountRes.status === 'fulfilled') setAccounts(accountRes.value);
+      else toast.error('No se pudieron cargar cuentas');
+
+      setLoading(false);
+    };
+
+    loadBudgetData();
+  }, []);
+
+  const budgetRows = useMemo(() => {
+    const expenseByCategory = new Map<string, number>();
+    transactions
+      .filter((t) => t.status !== 'rechazado' && t.type === 'egreso')
+      .forEach((t) => expenseByCategory.set(t.category, (expenseByCategory.get(t.category) || 0) + t.amount));
+
+    accounts
+      .filter((account) => account.status === 'pendiente' || account.status === 'vencido')
+      .forEach((account) => expenseByCategory.set(account.category, (expenseByCategory.get(account.category) || 0) + account.amount));
+
+    return budgets.map((budget) => {
+      const spent = expenseByCategory.get(budget.category) || budget.spent;
+      const allocated = budget.allocated;
+      const remaining = allocated - spent;
+      const pct = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
+      return {
+        ...budget,
+        spent,
+        remaining,
+        pct,
+      };
+    });
+  }, [budgets, transactions, accounts]);
+
+  const totalAllocated = budgetRows.reduce((a, b) => a + b.allocated, 0);
+  const totalSpent = budgetRows.reduce((a, b) => a + b.spent, 0);
+  const totalRemaining = totalAllocated - totalSpent;
+  const totalPct = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
+
+  const barData = budgetRows.map(b => ({
     name: b.name.length > 10 ? b.name.substring(0, 10) + '..' : b.name,
     asignado: b.allocated,
     gastado: b.spent,
@@ -37,7 +98,7 @@ export function BudgetsPage() {
 
       {/* Hero stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" style={{ marginBottom: '32px' }}>
-        {[
+          {[
           { label: 'TOTAL ASIGNADO', value: formatMoney(totalAllocated), color: nd.textDisplay },
           { label: 'TOTAL GASTADO', value: formatMoney(totalSpent), color: nd.error },
           { label: 'DISPONIBLE', value: formatMoney(totalRemaining), color: nd.success },
@@ -107,10 +168,20 @@ export function BudgetsPage() {
           DETALLE POR PARTIDA
         </span>
         <div>
-          {budgets.map((b, i) => {
-            const pct = Math.round((b.spent / b.allocated) * 100);
+          {loading && (
+            <div style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary, padding: '8px 0' }}>
+              [CARGANDO PRESUPUESTOS]
+            </div>
+          )}
+          {!loading && budgetRows.length === 0 && (
+            <div style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary, padding: '8px 0' }}>
+              [SIN PRESUPUESTOS]
+            </div>
+          )}
+          {budgetRows.map((b, i) => {
+            const pct = b.pct;
             const barColor = pct > 90 ? nd.error : pct > 70 ? nd.warning : nd.success;
-            const remaining = b.allocated - b.spent;
+            const remaining = b.remaining;
             const segments = 20;
             const filled = Math.round((pct / 100) * segments);
             return (
