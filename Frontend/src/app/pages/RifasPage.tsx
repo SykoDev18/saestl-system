@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Ticket, Plus, X, ShoppingCart, Dice5, Users,
-  ChevronLeft, Trophy
+  ChevronLeft, Trophy, Gift, Sparkles
 } from 'lucide-react';
 import { rifas as initialRifas, type Rifa, type TicketInfo } from '../data/mockData';
 import { toast } from 'sonner';
@@ -34,6 +34,8 @@ export function RifasPage() {
   const [newRifaDrawDate, setNewRifaDrawDate] = useState('');
   const { isHidden, formatMoney } = useFinancialPrivacy();
   const sorteoIntervalRef = useRef<any>(null);
+  const sorteoBarRef = useRef<any>(null);
+  const [sorteoBarOpacities, setSorteoBarOpacities] = useState<number[]>(Array(15).fill(0.3));
 
   const openSell = (rifa: Rifa) => {
     setSelectedRifa(rifa); setSelectedTickets([]); setBuyerName(''); setBuyerPhone('');
@@ -58,12 +60,16 @@ export function RifasPage() {
     setSorteoModal('sorting');
     const soldTickets = selectedRifa.tickets.filter(t => t.sold);
     let count = 0;
+    sorteoBarRef.current = setInterval(() => {
+      setSorteoBarOpacities(Array.from({ length: 15 }, () => Math.random() > 0.5 ? 1 : 0.3));
+    }, 120);
     sorteoIntervalRef.current = setInterval(() => {
       const rand = soldTickets[Math.floor(Math.random() * soldTickets.length)];
       setSorteoNumbers(rand.number.toString().padStart(3, '0'));
       count++;
       if (count > 30) {
         clearInterval(sorteoIntervalRef.current);
+        if (sorteoBarRef.current) clearInterval(sorteoBarRef.current);
         const winnerTicket = soldTickets[Math.floor(Math.random() * soldTickets.length)];
         setWinner({ ticket: winnerTicket.number, name: winnerTicket.buyerName || 'N/A', phone: winnerTicket.buyerPhone || 'N/A' });
         setSorteoModal('result');
@@ -72,7 +78,7 @@ export function RifasPage() {
     }, 100);
   };
 
-  useEffect(() => { return () => { if (sorteoIntervalRef.current) clearInterval(sorteoIntervalRef.current); }; }, []);
+  useEffect(() => { return () => { if (sorteoIntervalRef.current) clearInterval(sorteoIntervalRef.current); if (sorteoBarRef.current) clearInterval(sorteoBarRef.current); }; }, []);
 
   const closeModals = useCallback(() => {
     setSellModal(false);
@@ -226,34 +232,83 @@ export function RifasPage() {
 
         {/* Sorteo Modal */}
         {sorteoModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
-            <div style={{ background: nd.surface, border: `1px solid ${nd.borderVisible}`, borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', textAlign: 'center' }}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <div style={{ background: nd.surface, border: `1px solid ${nd.borderVisible}`, borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '500px', textAlign: 'center' }}>
               {sorteoModal === 'confirm' && (
                 <>
-                  <Dice5 size={32} strokeWidth={1.5} style={{ color: nd.warning, margin: '0 auto 16px' }} />
-                  <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary, display: 'block', marginBottom: '8px' }}>REALIZAR SORTEO</span>
+                  <Gift size={28} strokeWidth={1.5} style={{ color: nd.raffle, margin: '0 auto 12px' }} />
+                  <span style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.raffle, display: 'block', marginBottom: '4px' }}>PREMIO</span>
+                  <div style={{ fontFamily: "'Doto', monospace", fontSize: '24px', fontWeight: 700, color: nd.textDisplay, marginBottom: '4px' }}>{r.prize || r.description}</div>
+                  <p style={{ fontSize: '13px', color: nd.textSecondary, marginBottom: '20px' }}>{r.description}</p>
+
+                  <div className="grid grid-cols-3 gap-3" style={{ marginBottom: '24px' }}>
+                    <div style={{ background: nd.surfaceRaised, borderRadius: '8px', padding: '12px' }}>
+                      <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em', color: nd.textSecondary }}>BOLETOS</p>
+                      <p style={{ fontFamily: mono, fontSize: '20px', fontWeight: 700, color: nd.raffle, lineHeight: 1, marginTop: '4px' }}>{r.soldTickets}</p>
+                    </div>
+                    <div style={{ background: nd.surfaceRaised, borderRadius: '8px', padding: '12px' }}>
+                      <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em', color: nd.textSecondary }}>PRECIO</p>
+                      <p style={{ fontFamily: mono, fontSize: '20px', fontWeight: 700, color: nd.textDisplay, lineHeight: 1, marginTop: '4px' }}>{formatMoney(r.pricePerTicket)}</p>
+                    </div>
+                    <div style={{ background: nd.surfaceRaised, borderRadius: '8px', padding: '12px' }}>
+                      <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em', color: nd.textSecondary }}>RECAUDADO</p>
+                      <p style={{ fontFamily: mono, fontSize: '20px', fontWeight: 700, color: nd.success, lineHeight: 1, marginTop: '4px' }}>{formatMoney(r.soldTickets * r.pricePerTicket)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2" style={{ marginBottom: '8px' }}>
+                    <Dice5 size={16} strokeWidth={1.5} style={{ color: nd.warning }} />
+                    <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary }}>REALIZAR SORTEO</span>
+                  </div>
                   <p style={{ fontFamily: mono, fontSize: '12px', color: nd.textDisabled, marginBottom: '24px' }}>PARTICIPANTES: {r.soldTickets}</p>
+
                   <div className="flex gap-3">
                     <button onClick={() => setSorteoModal(null)} className="flex-1 h-11 cursor-pointer" style={{ border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', color: nd.textSecondary, background: 'transparent' }}>CANCELAR</button>
-                    <button onClick={startSorteo} className="flex-1 h-11 cursor-pointer" style={{ background: nd.textDisplay, color: nd.black, borderRadius: '999px', fontFamily: mono, fontSize: '12px' }}>SORTEAR</button>
+                    <button onClick={startSorteo} className="flex-1 h-11 cursor-pointer flex items-center justify-center gap-2" style={{ background: nd.warning, color: nd.black, borderRadius: '999px', fontFamily: mono, fontSize: '12px', fontWeight: 700 }}>
+                      <Dice5 size={14} strokeWidth={1.5} /> SORTEAR
+                    </button>
                   </div>
                 </>
               )}
               {sorteoModal === 'sorting' && (
                 <>
-                  <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary, display: 'block', marginBottom: '16px' }}>SORTEANDO...</span>
-                  <div style={{ fontFamily: "'Doto', monospace", fontSize: '48px', fontWeight: 700, color: nd.raffle, margin: '16px 0' }}>{sorteoNumbers}</div>
+                  <div className="flex items-center justify-center gap-2" style={{ marginBottom: '8px' }}>
+                    <Gift size={18} strokeWidth={1.5} style={{ color: nd.raffle }} />
+                    <span style={{ fontSize: '14px', color: nd.textPrimary }}>{r.prize || r.description}</span>
+                  </div>
+                  <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textSecondary, display: 'block', marginBottom: '20px' }}>SORTEANDO...</span>
+                  <div style={{ fontFamily: "'Doto', monospace", fontSize: '72px', fontWeight: 700, color: nd.raffle, margin: '16px 0', textShadow: '0 0 40px rgba(168,85,247,0.4)' }}>{sorteoNumbers}</div>
+                  <div className="flex gap-[3px] justify-center" style={{ margin: '20px 0' }}>
+                    {sorteoBarOpacities.map((op, i) => (
+                      <div key={`bar-${i}`} style={{ width: '20px', height: '8px', borderRadius: '2px', background: nd.raffle, opacity: op, transition: 'opacity 0.1s' }} />
+                    ))}
+                  </div>
                   <p style={{ fontFamily: mono, fontSize: '10px', color: nd.textDisabled }}>[LOADING...]</p>
                 </>
               )}
               {sorteoModal === 'result' && winner && (
                 <>
-                  <Trophy size={32} strokeWidth={1.5} style={{ color: nd.warning, margin: '0 auto 16px' }} />
-                  <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.warning, display: 'block', marginBottom: '8px' }}>GANADOR</span>
-                  <div style={{ fontFamily: "'Doto', monospace", fontSize: '36px', fontWeight: 700, color: nd.textDisplay, marginBottom: '8px' }}>#{winner.ticket}</div>
-                  <p style={{ fontSize: '18px', color: nd.textPrimary }}>{winner.name}</p>
-                  <p style={{ fontFamily: mono, fontSize: '12px', color: nd.textDisabled, marginTop: '4px' }}>{winner.phone}</p>
-                  <button onClick={() => { setSorteoModal(null); }} className="w-full h-11 cursor-pointer mt-6" style={{ border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', color: nd.textSecondary, background: 'transparent' }}>CERRAR</button>
+                  <div style={{ background: 'rgba(168,85,247,0.08)', borderRadius: '12px', padding: '24px', marginBottom: '20px' }}>
+                    <div className="flex items-center justify-center gap-2" style={{ marginBottom: '12px' }}>
+                      <Sparkles size={20} strokeWidth={1.5} style={{ color: nd.warning }} />
+                      <Trophy size={28} strokeWidth={1.5} style={{ color: nd.warning }} />
+                      <Sparkles size={20} strokeWidth={1.5} style={{ color: nd.warning }} />
+                    </div>
+                    <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.warning, display: 'block', marginBottom: '8px' }}>GANADOR</span>
+                    <div style={{ fontFamily: "'Doto', monospace", fontSize: '48px', fontWeight: 700, color: nd.textDisplay, marginBottom: '8px' }}>#{winner.ticket.toString().padStart(3, '0')}</div>
+                    <p style={{ fontSize: '20px', color: nd.textPrimary }}>{winner.name}</p>
+                    <p style={{ fontFamily: mono, fontSize: '12px', color: nd.textDisabled, marginTop: '4px' }}>{winner.phone}</p>
+                  </div>
+
+                  <div style={{ background: nd.surfaceRaised, border: `1px solid ${nd.raffle}`, borderRadius: '8px', padding: '12px', marginBottom: '20px' }} className="flex items-center justify-center gap-2">
+                    <Gift size={16} strokeWidth={1.5} style={{ color: nd.raffle }} />
+                    <div>
+                      <span style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em', color: nd.raffle, display: 'block' }}>PREMIO</span>
+                      <span style={{ fontSize: '14px', color: nd.textPrimary }}>{r.prize || r.description}</span>
+                    </div>
+                  </div>
+
+                  <button onClick={() => { setSorteoModal(null); }} className="w-full h-11 cursor-pointer" style={{ border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', color: nd.textSecondary, background: 'transparent' }}>CERRAR</button>
                 </>
               )}
             </div>
