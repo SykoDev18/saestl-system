@@ -3,9 +3,10 @@ import {
   Ticket, Plus, X, ShoppingCart, Dice5, Users,
   ChevronLeft, Trophy, Gift, Sparkles
 } from 'lucide-react';
-import { rifas as initialRifas, type Rifa, type TicketInfo } from '../data/mockData';
+import { type Rifa, type TicketInfo } from '../data/mockData';
 import { toast } from 'sonner';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { rifaService } from '../services/rifaService';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -15,7 +16,8 @@ const nd = {
 const mono = "'Space Mono', monospace";
 
 export function RifasPage() {
-  const [rifas, setRifas] = useState(initialRifas);
+  const [rifas, setRifas] = useState<Rifa[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedRifa, setSelectedRifa] = useState<Rifa | null>(null);
   const [sellModal, setSellModal] = useState(false);
   const [sorteoModal, setSorteoModal] = useState<'confirm' | 'sorting' | 'result' | null>(null);
@@ -37,6 +39,31 @@ export function RifasPage() {
   const sorteoBarRef = useRef<any>(null);
   const [sorteoBarOpacities, setSorteoBarOpacities] = useState<number[]>(Array(15).fill(0.3));
 
+  const replaceRifaInState = (updatedRifa: Rifa) => {
+    setRifas(prev => prev.map(r => r.id === updatedRifa.id ? updatedRifa : r));
+    setSelectedRifa(updatedRifa);
+  };
+
+  const handleCloseRifa = async (rifaId: string) => {
+    try {
+      const updatedRifa = await rifaService.close(rifaId);
+      replaceRifaInState(updatedRifa);
+      toast.success('[RIFA CERRADA]');
+    } catch {
+      toast.error('No se pudo cerrar la rifa');
+    }
+  };
+
+  const handleReopenRifa = async (rifaId: string) => {
+    try {
+      const updatedRifa = await rifaService.reopen(rifaId);
+      replaceRifaInState(updatedRifa);
+      toast.success('[RIFA ABIERTA]');
+    } catch {
+      toast.error('No se pudo abrir la rifa');
+    }
+  };
+
   const openSell = (rifa: Rifa) => {
     setSelectedRifa(rifa); setSelectedTickets([]); setBuyerName(''); setBuyerPhone('');
     setBuyerEmail(''); setBuyerPaid(true); setSellModal(true);
@@ -44,21 +71,34 @@ export function RifasPage() {
 
   const toggleTicket = (num: number) => setSelectedTickets(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]);
 
-  const handleSell = () => {
+  const handleSell = async () => {
     if (!selectedRifa || selectedTickets.length === 0 || !buyerName || !buyerPhone) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
-    setRifas(prev => prev.map(r => {
-      if (r.id !== selectedRifa.id) return r;
-      const newTickets = r.tickets.map(t => selectedTickets.includes(t.number) ? { ...t, sold: true, buyerName, buyerPhone, buyerEmail, soldBy: 'Juan Perez', soldDate: new Date().toISOString().split('T')[0], paid: buyerPaid } : t);
-      return { ...r, tickets: newTickets, soldTickets: newTickets.filter(t => t.sold).length };
-    }));
-    toast.success(`[SOLD: ${selectedTickets.length}]`);
-    setSellModal(false);
+    try {
+      const updatedRifa = await rifaService.sellTickets(selectedRifa.id, {
+        ticketNumbers: selectedTickets,
+        buyerName,
+        buyerPhone,
+        buyerEmail,
+        paid: buyerPaid,
+      });
+      replaceRifaInState(updatedRifa);
+      toast.success(`[SOLD: ${selectedTickets.length}]`);
+      setSellModal(false);
+    } catch {
+      toast.error('No se pudo registrar la venta');
+    }
   };
 
   const startSorteo = () => {
     if (!selectedRifa) return;
+    const currentRifa = rifas.find(r => r.id === selectedRifa.id) || selectedRifa;
     setSorteoModal('sorting');
-    const soldTickets = selectedRifa.tickets.filter(t => t.sold);
+    const soldTickets = (currentRifa.tickets || []).filter(t => t.sold);
+    if (soldTickets.length === 0) {
+      toast.error('[SIN BOLETOS VENDIDOS]');
+      setSorteoModal(null);
+      return;
+    }
     let count = 0;
     sorteoBarRef.current = setInterval(() => {
       setSorteoBarOpacities(Array.from({ length: 15 }, () => Math.random() > 0.5 ? 1 : 0.3));
@@ -70,10 +110,22 @@ export function RifasPage() {
       if (count > 30) {
         clearInterval(sorteoIntervalRef.current);
         if (sorteoBarRef.current) clearInterval(sorteoBarRef.current);
-        const winnerTicket = soldTickets[Math.floor(Math.random() * soldTickets.length)];
-        setWinner({ ticket: winnerTicket.number, name: winnerTicket.buyerName || 'N/A', phone: winnerTicket.buyerPhone || 'N/A' });
-        setSorteoModal('result');
-        setRifas(prev => prev.map(r => r.id === selectedRifa.id ? { ...r, status: 'sorteada' as const, winner: { name: winnerTicket.buyerName!, phone: winnerTicket.buyerPhone!, ticket: winnerTicket.number } } : r));
+        rifaService.drawWinner(currentRifa.id)
+          .then((updatedRifa) => {
+            replaceRifaInState(updatedRifa);
+            if (updatedRifa.winner) {
+              setWinner({
+                ticket: updatedRifa.winner.ticket,
+                name: updatedRifa.winner.name,
+                phone: updatedRifa.winner.phone,
+              });
+            }
+            setSorteoModal('result');
+          })
+          .catch(() => {
+            toast.error('No se pudo realizar el sorteo');
+            setSorteoModal(null);
+          });
       }
     }, 100);
   };
@@ -92,24 +144,36 @@ export function RifasPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [closeModals]);
 
+  useEffect(() => {
+    rifaService
+      .list()
+      .then(setRifas)
+      .catch(() => toast.error('No se pudieron cargar las rifas'))
+      .finally(() => setLoading(false));
+  }, []);
+
   const openCreate = () => {
     setNewRifaName(''); setNewRifaPrize(''); setNewRifaPrice(''); setNewRifaTickets(''); setNewRifaDrawDate('');
     setCreateModal(true);
   };
 
-  const handleCreateRifa = () => {
+  const handleCreateRifa = async () => {
     if (!newRifaName || !newRifaPrize || !newRifaPrice || !newRifaTickets || !newRifaDrawDate) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
-    const total = parseInt(newRifaTickets);
-    const tickets: TicketInfo[] = Array.from({ length: total }, (_, i) => ({ number: i + 1, sold: false, paid: false }));
-    const newRifa: Rifa = {
-      id: Date.now().toString(), name: newRifaName, description: newRifaPrize, prize: newRifaPrize,
-      pricePerTicket: parseFloat(newRifaPrice), totalTickets: total, soldTickets: 0,
-      startDate: new Date().toISOString().split('T')[0], endDate: newRifaDrawDate, drawDate: newRifaDrawDate,
-      status: 'activa', createdBy: 'Juan Pérez', tickets,
-    };
-    setRifas(prev => [newRifa, ...prev]);
-    setCreateModal(false);
-    toast.success('[CREATED]');
+    try {
+      const createdRifa = await rifaService.create({
+        name: newRifaName,
+        description: newRifaPrize,
+        prize: newRifaPrize,
+        pricePerTicket: parseFloat(newRifaPrice),
+        totalTickets: parseInt(newRifaTickets),
+        drawDate: newRifaDrawDate,
+      });
+      setRifas(prev => [createdRifa, ...prev]);
+      setCreateModal(false);
+      toast.success('[CREATED]');
+    } catch {
+      toast.error('No se pudo guardar la rifa');
+    }
   };
 
   const inputStyle: React.CSSProperties = { fontFamily: mono, fontSize: '13px', color: nd.textPrimary, background: 'transparent', borderBottom: `1px solid ${nd.borderVisible}`, padding: '8px 0', width: '100%', outline: 'none' };
@@ -192,7 +256,17 @@ export function RifasPage() {
                 style={{ height: '44px', padding: '0 24px', border: `1px solid ${nd.warning}`, color: nd.warning, borderRadius: '999px', fontFamily: mono, fontSize: '12px', letterSpacing: '0.06em', background: 'transparent' }}>
                 <Dice5 size={14} strokeWidth={1.5} /> SORTEAR
               </button>
+              <button onClick={() => handleCloseRifa(r.id)} className="flex items-center gap-2 cursor-pointer"
+                style={{ height: '44px', padding: '0 24px', border: `1px solid ${nd.textDisabled}`, color: nd.textSecondary, borderRadius: '999px', fontFamily: mono, fontSize: '12px', letterSpacing: '0.06em', background: 'transparent' }}>
+                CERRAR
+              </button>
             </>
+          )}
+          {r.status === 'cerrada' && (
+            <button onClick={() => handleReopenRifa(r.id)} className="flex items-center gap-2 cursor-pointer"
+              style={{ height: '44px', padding: '0 24px', border: `1px solid ${nd.success}`, color: nd.success, borderRadius: '999px', fontFamily: mono, fontSize: '12px', letterSpacing: '0.06em', background: 'transparent' }}>
+              ABRIR
+            </button>
           )}
         </div>
 
@@ -333,6 +407,11 @@ export function RifasPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {loading && (
+          <div className="col-span-full py-10 text-center" style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px' }}>
+            <p style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary, letterSpacing: '0.06em' }}>[CARGANDO RIFAS]</p>
+          </div>
+        )}
         {rifas.map(r => {
           const pct = Math.round((r.soldTickets / r.totalTickets) * 100);
           const segments = 15;
