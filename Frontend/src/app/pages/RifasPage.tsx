@@ -179,7 +179,7 @@ export function RifasPage() {
   const inputStyle: React.CSSProperties = { fontFamily: mono, fontSize: '13px', color: nd.textPrimary, background: 'transparent', borderBottom: `1px solid ${nd.borderVisible}`, padding: '8px 0', width: '100%', outline: 'none' };
 
   // DETAIL VIEW
-  if (selectedRifa && !sellModal && !sorteoModal) {
+  if (selectedRifa && !sellModal) {
     const r = rifas.find(ri => ri.id === selectedRifa.id) || selectedRifa;
     const pct = Math.round((r.soldTickets / r.totalTickets) * 100);
     const income = r.soldTickets * r.pricePerTicket;
