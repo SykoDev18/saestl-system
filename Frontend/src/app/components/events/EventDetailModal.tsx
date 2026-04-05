@@ -27,7 +27,7 @@ export function EventDetailModal({ event, onClose }: Props) {
 
   const tc = typeColors[event.type] || nd.textSecondary;
   const d = new Date(event.date);
-  const pct = Math.round((event.registered / event.capacity) * 100);
+  const pct = event.capacity > 0 ? Math.round((event.registered / event.capacity) * 100) : 0;
   const participants = event.participants || [];
   const filteredParticipants = participants.filter(p =>
     p.name.toLowerCase().includes(searchParticipant.toLowerCase()) ||

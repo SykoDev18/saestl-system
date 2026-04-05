@@ -3,11 +3,12 @@ import {
   Plus, CalendarDays, List, Clock, MapPin, Users, Search, X,
   ChevronLeft, ChevronRight, DollarSign
 } from 'lucide-react';
-import { events as initialEvents, type Event } from '../data/mockData';
+import type { Event } from '../data/mockData';
 import { EventDetailModal } from '../components/events/EventDetailModal';
 import { CreateEventWizard } from '../components/events/CreateEventWizard';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
 import { toast } from 'sonner';
+import { eventService } from '../services/eventService';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -31,10 +32,11 @@ const DAYS = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function EventsPage() {
-  const [events, setEvents] = useState(initialEvents);
+  const [events, setEvents] = useState<Event[]>([]);
   const [view, setView] = useState<'calendario' | 'lista'>('calendario');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
   const { isHidden, formatMoney } = useFinancialPrivacy();
 
   const today = new Date(2026, 2, 16);
@@ -56,13 +58,13 @@ export function EventsPage() {
     return days;
   }, [calMonth, calYear]);
 
-  const getEventsForDay = (date: number, month: number, year: number) => events.filter(e => { const d = new Date(e.date); return d.getDate() === date && d.getMonth() === month && d.getFullYear() === year; });
+  const getEventsForDay = (date: number, month: number, year: number) => events.filter((event: Event) => { const d = new Date(event.date); return d.getDate() === date && d.getMonth() === month && d.getFullYear() === year; });
   const isToday = (date: number, month: number, year: number) => date === today.getDate() && month === today.getMonth() && year === today.getFullYear();
 
-  const filteredEvents = useMemo(() => events.filter(e => {
-    if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterType !== 'todos' && e.type !== filterType) return false;
-    if (filterStatus !== 'todos' && e.status !== filterStatus) return false;
+  const filteredEvents = useMemo(() => events.filter((event: Event) => {
+    if (search && !event.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterType !== 'todos' && event.type !== filterType) return false;
+    if (filterStatus !== 'todos' && event.status !== filterStatus) return false;
     return true;
   }), [events, search, filterType, filterStatus]);
 
@@ -77,11 +79,23 @@ export function EventsPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [closeModals]);
 
-  const handleCreateEvent = (eventData: Omit<Event, 'id' | 'registered' | 'participants'>) => {
-    const newEvent: Event = { ...eventData, id: Date.now().toString(), registered: 0, participants: [] };
-    setEvents(prev => [newEvent, ...prev]);
-    setShowCreate(false);
-    toast.success('[CREATED]');
+  useEffect(() => {
+    eventService
+      .list()
+      .then(setEvents)
+      .catch(() => toast.error('No se pudieron cargar los eventos'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleCreateEvent = async (eventData: Omit<Event, 'id' | 'registered' | 'participants'>) => {
+    try {
+      const createdEvent = await eventService.create({ ...eventData, registered: 0 });
+      setEvents((prev: Event[]) => [createdEvent, ...prev]);
+      setShowCreate(false);
+      toast.success('[CREATED]');
+    } catch {
+      toast.error('No se pudo guardar el evento');
+    }
   };
 
   return (
@@ -106,9 +120,9 @@ export function EventsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" style={{ marginBottom: '24px' }}>
         {[
           { label: 'TOTAL', value: events.length.toString(), color: nd.textDisplay },
-          { label: 'PROXIMOS', value: events.filter(e => e.status === 'proximo').length.toString(), color: nd.success },
-          { label: 'REGISTRADOS', value: events.reduce((a, e) => a + e.registered, 0).toString(), color: '#5B9BF6' },
-          { label: 'PRESUPUESTO', value: formatMoney(events.reduce((a, e) => a + e.budget, 0)), color: nd.warning },
+          { label: 'PROXIMOS', value: events.filter((event: Event) => event.status === 'proximo').length.toString(), color: nd.success },
+          { label: 'REGISTRADOS', value: events.reduce((total: number, event: Event) => total + event.registered, 0).toString(), color: '#5B9BF6' },
+          { label: 'PRESUPUESTO', value: formatMoney(events.reduce((total: number, event: Event) => total + event.budget, 0)), color: nd.warning },
         ].map(s => (
           <div key={s.label} style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px', padding: '16px' }}>
             <p style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.08em', color: nd.textSecondary }}>{s.label}</p>
@@ -166,7 +180,7 @@ export function EventsPage() {
 
           {/* Grid */}
           <div className="grid grid-cols-7">
-            {calendarDays.map((day, idx) => {
+            {calendarDays.map((day: { date: number; month: number; year: number; isCurrentMonth: boolean }, idx: number) => {
               const dayEvents = day.isCurrentMonth ? getEventsForDay(day.date, day.month, day.year) : [];
               const isCurrent = isToday(day.date, day.month, day.year);
               return (
@@ -219,6 +233,11 @@ export function EventsPage() {
       {/* LIST VIEW */}
       {view === 'lista' && (
         <div>
+          {loading && (
+            <div className="mb-4 py-6 text-center" style={{ background: nd.surface, border: `1px solid ${nd.border}`, borderRadius: '12px' }}>
+              <p style={{ fontFamily: mono, fontSize: '11px', color: nd.textSecondary, letterSpacing: '0.06em' }}>[CARGANDO EVENTOS]</p>
+            </div>
+          )}
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: '16px' }}>
             <div className="relative flex-1 min-w-[200px]">
@@ -255,7 +274,7 @@ export function EventsPage() {
                 const tc = typeColors[event.type] || nd.textSecondary;
                 const sc = statusMap[event.status] || statusMap.proximo;
                 const d = new Date(event.date);
-                const pct = Math.round((event.registered / event.capacity) * 100);
+                const pct = event.capacity > 0 ? Math.round((event.registered / event.capacity) * 100) : 0;
                 const segments = 15;
                 const filled = Math.round((pct / 100) * segments);
 

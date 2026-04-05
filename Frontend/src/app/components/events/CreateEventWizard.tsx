@@ -18,7 +18,7 @@ const typeOptions = [
 
 interface Props {
   onClose: () => void;
-  onCreate: (event: Omit<Event, 'id' | 'registered' | 'participants'>) => void;
+  onCreate: (event: Omit<Event, 'id' | 'registered' | 'participants'>) => void | Promise<void>;
 }
 
 export function CreateEventWizard({ onClose, onCreate }: Props) {
