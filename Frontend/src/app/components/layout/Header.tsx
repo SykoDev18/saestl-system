@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { Bell, ChevronDown, Menu, User, Settings, LogOut, AlertTriangle, Info, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Bell, ChevronDown, Menu, User, Settings, LogOut, AlertTriangle, Info, CheckCircle, Eye, EyeOff, X } from 'lucide-react';
 import { notifications } from '../../data/mockData';
 import { useFinancialPrivacy } from '../FinancialPrivacyContext';
 import saestiLogo from '../../../assets/saestl-logo.png';
@@ -13,6 +13,7 @@ interface HeaderProps {
 export function Header({ sidebarCollapsed, onMenuClick }: HeaderProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState(notifications);
   const { isHidden, toggle } = useFinancialPrivacy();
   const navigate = useNavigate();
   const userRef = useRef<HTMLDivElement>(null);
@@ -38,7 +39,7 @@ export function Header({ sidebarCollapsed, onMenuClick }: HeaderProps) {
     return () => document.removeEventListener('keydown', handler);
   }, [closeDropdowns]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifs.filter(n => !n.read).length;
 
   return (
     <header
@@ -130,7 +131,18 @@ export function Header({ sidebarCollapsed, onMenuClick }: HeaderProps) {
                   NOTIFICACIONES
                 </span>
               </div>
-              {notifications.map(n => (
+              {notifs.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <span style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: '11px',
+                    letterSpacing: '0.06em',
+                    color: 'var(--nd-text-disabled)',
+                  }}>
+                    [SIN NOTIFICACIONES]
+                  </span>
+                </div>
+              ) : notifs.map(n => (
                 <div
                   key={n.id}
                   className="px-4 py-3 flex gap-3 cursor-pointer transition-colors duration-150"
@@ -159,6 +171,15 @@ export function Header({ sidebarCollapsed, onMenuClick }: HeaderProps) {
                       {n.time}
                     </div>
                   </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setNotifs(prev => prev.filter(item => item.id !== n.id)); }}
+                    className="mt-0.5 cursor-pointer transition-colors duration-150"
+                    style={{ color: 'var(--nd-text-disabled)' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = 'var(--nd-text-primary)')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--nd-text-disabled)')}
+                  >
+                    <X size={14} strokeWidth={1.5} />
+                  </button>
                 </div>
               ))}
             </div>

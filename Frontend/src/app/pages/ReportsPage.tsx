@@ -1,11 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
-import { Download, TrendingUp, TrendingDown, DollarSign, FileText } from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, DollarSign, FileText, FileSpreadsheet, FileDown, File } from 'lucide-react';
 import { chartData, transactions } from '../data/mockData';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
+import { toast } from 'sonner';
 
 const nd = {
   black: '#000', surface: '#111', surfaceRaised: '#1A1A1A', border: '#222', borderVisible: '#333',
@@ -21,6 +22,17 @@ const tooltipStyle = {
 
 export function ReportsPage() {
   const { formatMoney } = useFinancialPrivacy();
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const totalIngresos = transactions.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
   const totalEgresos = transactions.filter(t => t.type === 'egreso').reduce((a, t) => a + t.amount, 0);
 
@@ -45,10 +57,31 @@ export function ReportsPage() {
             ANALISIS FINANCIERO
           </p>
         </div>
-        <button className="flex items-center gap-2 cursor-pointer shrink-0 transition-colors duration-150"
-          style={{ height: '44px', padding: '0 24px', border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', letterSpacing: '0.06em', color: nd.textPrimary, background: 'transparent' }}>
-          <Download size={14} strokeWidth={1.5} /> EXPORTAR
-        </button>
+        <div ref={exportRef} className="relative">
+          <button onClick={() => setExportOpen(!exportOpen)} className="flex items-center gap-2 cursor-pointer shrink-0 transition-colors duration-150"
+            style={{ height: '44px', padding: '0 24px', border: `1px solid ${nd.borderVisible}`, borderRadius: '999px', fontFamily: mono, fontSize: '12px', letterSpacing: '0.06em', color: nd.textPrimary, background: 'transparent' }}>
+            <Download size={14} strokeWidth={1.5} /> EXPORTAR
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-12 w-48 py-1 overflow-hidden" style={{ background: nd.surfaceRaised, border: `1px solid ${nd.borderVisible}`, borderRadius: '8px', zIndex: 10 }}>
+              {[
+                { label: 'EXCEL', ext: '.xlsx', icon: FileSpreadsheet },
+                { label: 'CSV', ext: '.csv', icon: FileDown },
+                { label: 'PDF', ext: '.pdf', icon: File },
+              ].map(item => (
+                <button key={item.label} onClick={() => { setExportOpen(false); toast.success(`[EXPORTED: ${item.label}]`); }}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left cursor-pointer transition-colors duration-150 hover:bg-[#111]"
+                  style={{ color: nd.textSecondary }}>
+                  <div className="flex items-center gap-3">
+                    <item.icon size={14} strokeWidth={1.5} />
+                    <span style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.06em' }}>{item.label}</span>
+                  </div>
+                  <span style={{ fontFamily: mono, fontSize: '10px', color: nd.textDisabled }}>{item.ext}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
