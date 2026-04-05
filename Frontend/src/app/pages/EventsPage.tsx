@@ -39,7 +39,7 @@ export function EventsPage() {
   const [loading, setLoading] = useState(true);
   const { isHidden, formatMoney } = useFinancialPrivacy();
 
-  const today = new Date(2026, 2, 16);
+  const today = new Date();
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [search, setSearch] = useState('');
