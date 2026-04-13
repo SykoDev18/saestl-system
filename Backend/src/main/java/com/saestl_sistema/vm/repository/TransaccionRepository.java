@@ -15,6 +15,11 @@ public interface TransaccionRepository extends JpaRepository<Transaccion, Long> 
     List<Transaccion> findByCategoriaId(Long categoriaId);
     List<Transaccion> findByFechaBetween(LocalDate desde, LocalDate hasta);
     List<Transaccion> findByTipoAndFechaBetween(String tipo, LocalDate desde, LocalDate hasta);
+    List<Transaccion> findByUsuarioIdAndCategoriaIdAndFechaBetweenAndEstadoNotOrderByFechaAscCreatedAtAsc(Long usuarioId,
+                                                                                                          Long categoriaId,
+                                                                                                          LocalDate desde,
+                                                                                                          LocalDate hasta,
+                                                                                                          String estado);
 
     @Query("SELECT COALESCE(SUM(t.monto), 0) FROM Transaccion t WHERE t.tipo = :tipo AND t.fecha BETWEEN :desde AND :hasta")
     BigDecimal sumMontoByTipoAndFechaBetween(@Param("tipo") String tipo,

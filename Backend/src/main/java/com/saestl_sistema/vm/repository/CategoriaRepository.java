@@ -11,5 +11,6 @@ public interface CategoriaRepository extends JpaRepository<Categoria, Long> {
     List<Categoria> findByActivoTrue();
     List<Categoria> findByTipoAndActivoTrue(String tipo);
     Optional<Categoria> findByNombreAndTipo(String nombre, String tipo);
+    Optional<Categoria> findFirstByNombreAndActivoTrueOrderByIdAsc(String nombre);
     Optional<Categoria> findFirstByTipoAndActivoTrueOrderByIdAsc(String tipo);
 }

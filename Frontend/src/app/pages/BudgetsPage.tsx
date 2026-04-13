@@ -37,7 +37,15 @@ const getDaysLeft = (mes: number, anio: number) => {
   return Math.max(0, diff);
 };
 const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
-const categoryOptions = ['Eventos', 'Operación', 'Reserva', 'Servicios', 'Alimentos', 'Materiales', 'Transporte'];
+const categoryOptions = ['Cuotas', 'Donaciones', 'Venta de boletos', 'Eventos', 'Papelería', 'Transporte', 'Alimentación', 'Material', 'Servicios', 'Otros ingresos', 'Otros egresos'];
+const defaultBudgetCategory = 'Eventos';
+
+const getBudgetTransactionDate = (mes: number, anio: number) => {
+  const today = new Date();
+  const lastDayOfMonth = new Date(anio, mes, 0).getDate();
+  const day = Math.min(today.getDate(), lastDayOfMonth);
+  return `${anio}-${String(mes).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
 
 export function BudgetsPage() {
   const { formatMoney, isHidden } = useFinancialPrivacy();
@@ -48,22 +56,23 @@ export function BudgetsPage() {
   const [accounts, setAccounts] = useState<Cuenta[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const [budgetRes, txRes, accountRes] = await Promise.allSettled([
-        api.get<Budget[]>('/presupuestos'),
-        transactionService.list(),
-        cuentaService.list(),
-      ]);
-      if (budgetRes.status === 'fulfilled' && budgetRes.value.length > 0) setBudgets(budgetRes.value);
-      else setBudgets(fallbackBudgets);
-      if (txRes.status === 'fulfilled') setTransactions(txRes.value);
-      if (accountRes.status === 'fulfilled') setAccounts(accountRes.value);
-      setLoading(false);
-    };
-    load();
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const [budgetRes, txRes, accountRes] = await Promise.allSettled([
+      api.get<Budget[]>('/presupuestos'),
+      transactionService.list(),
+      cuentaService.list(),
+    ]);
+    if (budgetRes.status === 'fulfilled' && budgetRes.value.length > 0) setBudgets(budgetRes.value);
+    else setBudgets(fallbackBudgets);
+    if (txRes.status === 'fulfilled') setTransactions(txRes.value);
+    if (accountRes.status === 'fulfilled') setAccounts(accountRes.value);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   /* ─── Filter / Sort / View state ─── */
   const now = new Date();
@@ -92,7 +101,7 @@ export function BudgetsPage() {
 
   /* ─── Create form ─── */
   const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState('Eventos');
+  const [formCategory, setFormCategory] = useState(defaultBudgetCategory);
   const [formAllocated, setFormAllocated] = useState('');
   const [formSpent, setFormSpent] = useState('');
   const [formRecurrente, setFormRecurrente] = useState(false);
@@ -189,82 +198,139 @@ export function BudgetsPage() {
   }));
 
   /* ─── Handlers ─── */
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formName.trim() || !formAllocated) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
     const alloc = parseFloat(formAllocated);
     const spent = parseFloat(formSpent) || 0;
     if (alloc <= 0) { toast.error('[ERROR: MONTO INVÁLIDO]'); return; }
 
-    const createOne = (m: number, y: number) => {
-      const newB: Budget = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-        name: formName.trim(), category: formCategory, allocated: alloc, spent, mes: m, anio: y, gastos: [],
-      };
-      return newB;
-    };
-
-    const newBudgets: Budget[] = [createOne(mesFiltro, anioFiltro)];
+    const periods = [{ mes: mesFiltro, anio: anioFiltro }];
     if (formRecurrente) {
       for (let i = 1; i <= formMesesRecurrentes; i++) {
-        let nm = mesFiltro + i, ny = anioFiltro;
+        let nm = mesFiltro + i;
+        let ny = anioFiltro;
         if (nm > 12) { nm -= 12; ny++; }
-        newBudgets.push(createOne(nm, ny));
+        periods.push({ mes: nm, anio: ny });
       }
     }
-    setBudgets(prev => [...prev, ...newBudgets]);
-    toast.success(formRecurrente ? `[${newBudgets.length} PRESUPUESTOS RECURRENTES CREADOS]` : '[PRESUPUESTO CREADO]');
-    setCreateModal(false);
-    setFormName(''); setFormAllocated(''); setFormSpent(''); setFormRecurrente(false); setFormMesesRecurrentes(3);
+
+    try {
+      for (const period of periods) {
+        await api.post<Budget>('/presupuestos', {
+          name: formName.trim(),
+          category: formCategory,
+          allocated: alloc,
+          mes: period.mes,
+          anio: period.anio,
+        });
+
+        if (spent > 0) {
+          await transactionService.create({
+            date: getBudgetTransactionDate(period.mes, period.anio),
+            type: 'egreso',
+            category: formCategory,
+            description: `Gasto inicial - ${formName.trim()}`,
+            responsible: formName.trim(),
+            amount: spent,
+            status: 'aprobado',
+            metodoPago: 'Transferencia',
+          });
+        }
+      }
+
+      await loadData();
+      toast.success(formRecurrente ? `[${periods.length} PRESUPUESTOS RECURRENTES CREADOS]` : '[PRESUPUESTO CREADO]');
+      setCreateModal(false);
+      setFormName(''); setFormAllocated(''); setFormSpent(''); setFormCategory(defaultBudgetCategory); setFormRecurrente(false); setFormMesesRecurrentes(3);
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO CREAR EL PRESUPUESTO]');
+    }
   };
 
   const openEdit = (b: Budget) => {
     setEditModalId(b.id); setEditName(b.name); setEditCategory(b.category); setEditAllocated(b.allocated.toString());
   };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!editName.trim() || !editAllocated) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
-    setBudgets(prev => prev.map(b => b.id === editModalId ? { ...b, name: editName.trim(), category: editCategory, allocated: parseFloat(editAllocated) } : b));
-    toast.success('[PRESUPUESTO ACTUALIZADO]');
-    setEditModalId(null);
+    const target = budgets.find(b => b.id === editModalId);
+    if (!target || !editModalId) return;
+
+    try {
+      await api.put<Budget>(`/presupuestos/${editModalId}`, {
+        name: editName.trim(),
+        category: editCategory,
+        allocated: parseFloat(editAllocated),
+        mes: target.mes,
+        anio: target.anio,
+      });
+      await loadData();
+      toast.success('[PRESUPUESTO ACTUALIZADO]');
+      setEditModalId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO ACTUALIZAR]');
+    }
   };
 
   const openGasto = (id: string) => {
     setGastoModalId(id); setGastoMonto(''); setGastoDesc('');
   };
 
-  const handleGasto = () => {
+  const handleGasto = async () => {
     if (!gastoMonto || !gastoDesc.trim()) { toast.error('[ERROR: CAMPOS REQUERIDOS]'); return; }
     const monto = parseFloat(gastoMonto);
     if (monto <= 0) { toast.error('[ERROR: MONTO INVÁLIDO]'); return; }
     const target = budgets.find(b => b.id === gastoModalId);
     if (!target) return;
     if (target.spent + monto > target.allocated && !gastoConfirm) { setGastoExcede(true); return; }
-    const nuevoGasto: GastoRegistro = {
-      id: Date.now().toString(), monto, descripcion: gastoDesc.trim(),
-      fecha: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(),
-    };
-    setBudgets(prev => prev.map(b => b.id === gastoModalId
-      ? { ...b, spent: b.spent + monto, gastos: [...b.gastos, nuevoGasto] } : b));
-    toast.success(`[GASTO REGISTRADO: ${formatMoney(monto)}]`);
-    setGastoModalId(null); setGastoExcede(false); setGastoConfirm(false);
+
+    try {
+      await transactionService.create({
+        date: getBudgetTransactionDate(target.mes, target.anio),
+        type: 'egreso',
+        category: target.category,
+        description: gastoDesc.trim(),
+        responsible: target.name,
+        amount: monto,
+        status: 'aprobado',
+        metodoPago: 'Transferencia',
+      });
+      await loadData();
+      toast.success(`[GASTO REGISTRADO: ${formatMoney(monto)}]`);
+      setGastoModalId(null); setGastoExcede(false); setGastoConfirm(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO REGISTRAR EL GASTO]');
+    }
   };
   const [gastoExcede, setGastoExcede] = useState(false);
   const [gastoConfirm, setGastoConfirm] = useState(false);
 
-  const handleDelete = (id: string) => {
-    setBudgets(prev => prev.filter(b => b.id !== id));
-    toast.success('[PRESUPUESTO ELIMINADO]');
-    setDeleteConfirmId(null);
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete<void>(`/presupuestos/${id}`);
+      await loadData();
+      toast.success('[PRESUPUESTO ELIMINADO]');
+      setDeleteConfirmId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO ELIMINAR]');
+    }
   };
 
   /* Mejora 2: Duplicar */
-  const handleDuplicate = (b: Budget) => {
-    const dup: Budget = {
-      ...b, id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-      name: `${b.name} (copia)`, spent: 0, gastos: [], mes: mesFiltro, anio: anioFiltro,
-    };
-    setBudgets(prev => [...prev, dup]);
-    toast.success('[PARTIDA DUPLICADA]');
+  const handleDuplicate = async (b: Budget) => {
+    try {
+      await api.post<Budget>('/presupuestos', {
+        name: `${b.name} (copia)`,
+        category: b.category,
+        allocated: b.allocated,
+        mes: mesFiltro,
+        anio: anioFiltro,
+      });
+      await loadData();
+      toast.success('[PARTIDA DUPLICADA]');
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO DUPLICAR]');
+    }
   };
 
   /* Mejora 8: Reorder */
@@ -292,14 +358,25 @@ export function BudgetsPage() {
   };
 
   /* Mejora 1: Eliminar gasto individual */
-  const handleDeleteGasto = (budgetId: string, gastoId: string) => {
-    setBudgets(prev => prev.map(b => {
-      if (b.id !== budgetId) return b;
-      const gasto = b.gastos.find(g => g.id === gastoId);
-      if (!gasto) return b;
-      return { ...b, spent: Math.max(0, b.spent - gasto.monto), gastos: b.gastos.filter(g => g.id !== gastoId) };
-    }));
-    toast.success('[GASTO ELIMINADO]');
+  const handleDeleteGasto = async (budgetId: string, gastoId: string) => {
+    if (!/^\d+$/.test(gastoId)) {
+      setBudgets(prev => prev.map(b => {
+        if (b.id !== budgetId) return b;
+        const gasto = b.gastos.find(g => g.id === gastoId);
+        if (!gasto) return b;
+        return { ...b, spent: Math.max(0, b.spent - gasto.monto), gastos: b.gastos.filter(g => g.id !== gastoId) };
+      }));
+      toast.success('[GASTO ELIMINADO]');
+      return;
+    }
+
+    try {
+      await transactionService.remove(gastoId);
+      await loadData();
+      toast.success('[GASTO ELIMINADO]');
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO ELIMINAR EL GASTO]');
+    }
   };
 
   /* Mejora 3: Export CSV */
@@ -398,7 +475,7 @@ export function BudgetsPage() {
               </div>
             )}
           </div>
-          <button onClick={() => { setFormName(''); setFormAllocated(''); setFormSpent(''); setFormCategory('Eventos'); setFormRecurrente(false); setCreateModal(true); }}
+          <button onClick={() => { setFormName(''); setFormAllocated(''); setFormSpent(''); setFormCategory(defaultBudgetCategory); setFormRecurrente(false); setCreateModal(true); }}
             className="flex items-center gap-2 cursor-pointer"
             style={{ fontFamily: mono, fontSize: '11px', letterSpacing: '0.08em', color: nd.textDisplay, background: nd.accent, border: 'none', borderRadius: '20px', padding: '8px 16px' }}>
             <Plus size={14} /> NUEVO
