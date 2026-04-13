@@ -9,6 +9,8 @@ import {
 import { toast } from 'sonner';
 import { useFinancialPrivacy } from '../components/FinancialPrivacyContext';
 import { useNavigate } from 'react-router';
+import { useAuth } from '../components/AuthContext';
+import { configService, type UpdatePreferencesRequest, type UserConfigResponse } from '../services/configService';
 
 /* ── design tokens ── */
 const nd = {
@@ -56,18 +58,19 @@ const SHORTCUTS = [
 /* ── component ── */
 export function SettingsPage() {
   const { isHidden, toggle: togglePrivacy } = useFinancialPrivacy();
+  const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
 
   /* profile */
   const [editMode, setEditMode] = useState(false);
-  const [name, setName] = useState('Juan Perez Garcia');
-  const [email, setEmail] = useState('juan.perez@uaeh.edu.mx');
+  const [name, setName] = useState(user?.fullName ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState('771-123-4567');
   const [numeroCuenta, setNumeroCuenta] = useState('');
   const [carrera, setCarrera] = useState('Ingeniería en Computación');
   const [semestre, setSemestre] = useState('6');
   const [bio, setBio] = useState('');
-  const role = 'TESORERO';
+  const [role, setRole] = useState(user?.role ?? 'USER');
 
   /* notifications */
   const [notifEmail, setNotifEmail] = useState(true);
@@ -107,6 +110,42 @@ export function SettingsPage() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
+  const applyConfig = (config: UserConfigResponse) => {
+    setName(config.fullName || '');
+    setEmail(config.email || '');
+    setPhone(config.phone || '');
+    setNumeroCuenta(config.numeroCuenta || '');
+    setCarrera(config.carrera || '');
+    setSemestre(config.semestre || '');
+    setBio(config.bio || '');
+    setRole(config.role || 'USER');
+    setNotifEmail(config.notifEmail);
+    setNotifPush(config.notifPush);
+    setNotifSms(config.notifSms);
+    setNotifEventos(config.notifEventos);
+    setNotifPresupuestos(config.notifPresupuestos);
+    setNotifTransacciones(config.notifTransacciones);
+    setTheme(config.theme || 'dark');
+    setAccentColor(config.accentColor || '#8B1C23');
+    setLanguage(config.language || 'es');
+  };
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await configService.get();
+        applyConfig(config);
+      } catch {
+        if (user) {
+          setName(user.fullName);
+          setEmail(user.email);
+          setRole(user.role);
+        }
+      }
+    };
+    void loadConfig();
+  }, [user]);
+
   /* derived */
   const profileCompleteness = useMemo(() => {
     const filled = [name, email, phone, numeroCuenta, carrera, semestre, bio].filter(f => f.trim().length > 0).length;
@@ -139,19 +178,65 @@ export function SettingsPage() {
   const fmtDate = (ds: string) => new Date(ds).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   /* handlers */
-  const handleSave = () => {
-    if (!name.trim() || !email.trim()) { toast.error('[CAMPOS REQUERIDOS]'); return; }
-    if (!email.includes('@')) { toast.error('[EMAIL INVÁLIDO]'); return; }
-    setEditMode(false);
-    toast.success('[PERFIL GUARDADO]');
+  const buildPreferencesPayload = (overrides: Partial<UpdatePreferencesRequest> = {}): UpdatePreferencesRequest => ({
+    theme,
+    accentColor,
+    language,
+    notifEmail,
+    notifPush,
+    notifSms,
+    notifEventos,
+    notifPresupuestos,
+    notifTransacciones,
+    ...overrides,
+  });
+
+  const savePreferences = async (overrides: Partial<UpdatePreferencesRequest> = {}, successMessage = '[PREFERENCIAS GUARDADAS]') => {
+    try {
+      const saved = await configService.updatePreferences(buildPreferencesPayload(overrides));
+      applyConfig(saved);
+      toast.success(successMessage);
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDIERON GUARDAR LAS PREFERENCIAS]');
+    }
   };
 
-  const handlePwdChange = () => {
+  const handleSave = async () => {
+    if (!name.trim() || !email.trim()) { toast.error('[CAMPOS REQUERIDOS]'); return; }
+    if (!email.includes('@')) { toast.error('[EMAIL INVÁLIDO]'); return; }
+    try {
+      const saved = await configService.updateProfile({
+        fullName: name.trim(),
+        email: email.trim(),
+        phone,
+        numeroCuenta,
+        carrera,
+        semestre,
+        bio,
+      });
+      if (saved.token) {
+        localStorage.setItem('token', saved.token);
+      }
+      applyConfig(saved);
+      await refreshUser();
+      setEditMode(false);
+      toast.success('[PERFIL GUARDADO]');
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO GUARDAR EL PERFIL]');
+    }
+  };
+
+  const handlePwdChange = async () => {
     if (!curPwd) { toast.error('[CONTRASEÑA ACTUAL REQUERIDA]'); return; }
     if (newPwd.length < 8) { toast.error('[MÍNIMO 8 CARACTERES]'); return; }
     if (newPwd !== confirmPwd) { toast.error('[CONTRASEÑAS NO COINCIDEN]'); return; }
-    setCurPwd(''); setNewPwd(''); setConfirmPwd('');
-    toast.success('[CONTRASEÑA ACTUALIZADA]');
+    try {
+      await configService.changePassword({ currentPassword: curPwd, newPassword: newPwd });
+      setCurPwd(''); setNewPwd(''); setConfirmPwd('');
+      toast.success('[CONTRASEÑA ACTUALIZADA]');
+    } catch (error) {
+      toast.error(error instanceof Error ? `[ERROR: ${error.message.toUpperCase()}]` : '[ERROR: NO SE PUDO ACTUALIZAR LA CONTRASEÑA]');
+    }
   };
 
   const handleExport = () => {
@@ -164,7 +249,7 @@ export function SettingsPage() {
     toast.success('[DATOS EXPORTADOS]');
   };
 
-  const handleLogout = () => { localStorage.removeItem('token'); navigate('/login'); toast.success('[SESIÓN CERRADA]'); };
+  const handleLogout = () => { logout(); navigate('/login'); toast.success('[SESIÓN CERRADA]'); };
 
   const handleDeleteAccount = () => {
     if (deleteText !== 'ELIMINAR') return;
@@ -173,11 +258,18 @@ export function SettingsPage() {
     navigate('/login');
   };
 
-  const handleReset = () => {
-    setTheme('dark'); setAccentColor('#8B1C23'); setLanguage('es');
-    setNotifEmail(true); setNotifPush(true); setNotifSms(false);
-    setNotifEventos(true); setNotifPresupuestos(true); setNotifTransacciones(false);
-    toast.success('[PREFERENCIAS RESTABLECIDAS]');
+  const handleReset = async () => {
+    await savePreferences({
+      theme: 'dark',
+      accentColor: '#8B1C23',
+      language: 'es',
+      notifEmail: true,
+      notifPush: true,
+      notifSms: false,
+      notifEventos: true,
+      notifPresupuestos: true,
+      notifTransacciones: false,
+    }, '[PREFERENCIAS RESTABLECIDAS]');
   };
 
   /* styles */
@@ -327,13 +419,13 @@ export function SettingsPage() {
           <Bell size={16} strokeWidth={1.5} style={{ color: nd.textSecondary }} />
           <span style={sh}>NOTIFICACIONES</span>
         </div>
-        {([
-          { label: 'EMAIL', desc: 'Resumen semanal y alertas', on: notifEmail, toggle: () => setNotifEmail(!notifEmail) },
-          { label: 'PUSH', desc: 'Alertas en tiempo real', on: notifPush, toggle: () => setNotifPush(!notifPush) },
-          { label: 'SMS', desc: 'Sólo alertas urgentes', on: notifSms, toggle: () => setNotifSms(!notifSms) },
-          { label: 'EVENTOS', desc: 'Nuevos eventos y recordatorios', on: notifEventos, toggle: () => setNotifEventos(!notifEventos) },
-          { label: 'PRESUPUESTOS', desc: 'Alertas de límite', on: notifPresupuestos, toggle: () => setNotifPresupuestos(!notifPresupuestos) },
-          { label: 'TRANSACCIONES', desc: 'Cada registro nuevo', on: notifTransacciones, toggle: () => setNotifTransacciones(!notifTransacciones) },
+          {([
+          { label: 'EMAIL', desc: 'Resumen semanal y alertas', on: notifEmail, toggle: () => void savePreferences({ notifEmail: !notifEmail }) },
+          { label: 'PUSH', desc: 'Alertas en tiempo real', on: notifPush, toggle: () => void savePreferences({ notifPush: !notifPush }) },
+          { label: 'SMS', desc: 'Sólo alertas urgentes', on: notifSms, toggle: () => void savePreferences({ notifSms: !notifSms }) },
+          { label: 'EVENTOS', desc: 'Nuevos eventos y recordatorios', on: notifEventos, toggle: () => void savePreferences({ notifEventos: !notifEventos }) },
+          { label: 'PRESUPUESTOS', desc: 'Alertas de límite', on: notifPresupuestos, toggle: () => void savePreferences({ notifPresupuestos: !notifPresupuestos }) },
+          { label: 'TRANSACCIONES', desc: 'Cada registro nuevo', on: notifTransacciones, toggle: () => void savePreferences({ notifTransacciones: !notifTransacciones }) },
         ]).map((n, i, arr) => (
           <div key={n.label} className="flex items-center justify-between py-3.5" style={{ borderBottom: i < arr.length - 1 ? `1px solid ${nd.border}` : 'none' }}>
             <div>
@@ -506,7 +598,7 @@ export function SettingsPage() {
           <label style={lbl}>TEMA</label>
           <div className="flex gap-2">
             {([{ key: 'dark', label: 'OSCURO' }, { key: 'light', label: 'CLARO' }, { key: 'auto', label: 'AUTO' }] as const).map(t => (
-              <button key={t.key} onClick={() => setTheme(t.key)}
+              <button key={t.key} onClick={() => void savePreferences({ theme: t.key })}
                 className="flex-1 h-9 flex items-center justify-center cursor-pointer transition-all duration-150"
                 style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em',
                   background: theme === t.key ? nd.textDisplay : 'transparent',
@@ -523,7 +615,7 @@ export function SettingsPage() {
           <label style={lbl}>COLOR ACENTO</label>
           <div className="flex gap-2 flex-wrap">
             {ACCENT_COLORS.map(c => (
-              <button key={c.value} onClick={() => setAccentColor(c.value)} title={c.name}
+              <button key={c.value} onClick={() => void savePreferences({ accentColor: c.value })} title={c.name}
                 className="w-8 h-8 rounded-full cursor-pointer flex items-center justify-center transition-all duration-150"
                 style={{ background: c.value, border: accentColor === c.value ? `2px solid ${nd.textDisplay}` : '2px solid transparent' }}>
                 {accentColor === c.value && <Check size={14} strokeWidth={2.5} style={{ color: '#fff' }} />}
@@ -546,7 +638,7 @@ export function SettingsPage() {
           <label style={lbl}>IDIOMA</label>
           <div className="flex gap-2">
             {[{ key: 'es', label: 'ESPAÑOL' }, { key: 'en', label: 'ENGLISH' }].map(l => (
-              <button key={l.key} onClick={() => setLanguage(l.key)}
+              <button key={l.key} onClick={() => void savePreferences({ language: l.key })}
                 className="flex-1 h-9 flex items-center justify-center cursor-pointer transition-all duration-150"
                 style={{ fontFamily: mono, fontSize: '10px', letterSpacing: '0.06em',
                   background: language === l.key ? nd.textDisplay : 'transparent',
